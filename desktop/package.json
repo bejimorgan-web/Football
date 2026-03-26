@@ -1,0 +1,43 @@
+{
+  "name": "gito-iptv-control-panel",
+  "version": "1.0.0",
+  "description": "Gito IPTV Master Control Panel",
+  "author": "Gito IPTV",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.gito.iptv.control",
+    "productName": "Gito IPTV Control Panel",
+    "directories": {
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Gito IPTV Control Panel"
+    }
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "hls.js": "^1.6.13"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.0"
+  }
+}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Login</title>
+  <link rel="stylesheet" href="./auth.css">
+</head>
+<body>
+  <section class="auth-shell">
+    <p class="eyebrow">Desktop Authentication</p>
+    <h1>Sign In</h1>
+    <p>Authenticate before loading the IPTV operations dashboard.</p>
+    <form id="loginForm">
+      <label>Email<input id="emailInput" type="email" required></label>
+      <label>Password<input id="passwordInput" type="password" required></label>
+      <button class="primary-button" type="submit">Login</button>
+    </form>
+    <div class="status" id="statusLabel"></div>
+    <div class="link-row">
+      <span>No account yet?</span>
+      <a href="./register.html">Create one</a>
+    </div>
+    <p class="note">Payment integration remains a placeholder in this build.</p>
+  </section>
+  <script>
+    const statusLabel = document.getElementById("statusLabel");
+    document.getElementById("loginForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusLabel.textContent = "";
+      try {
+        const auth = await window.desktopApi.getAuthStatus();
+        await window.desktopApi.loginAdmin({
+          email: document.getElementById("emailInput").value.trim(),
+          password: document.getElementById("passwordInput").value,
+          deviceId: auth.deviceId,
+        });
+        window.desktopApi.notifyLoggedIn();
+      } catch (error) {
+        statusLabel.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>

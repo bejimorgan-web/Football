@@ -1,0 +1,12 @@
+{
+  "name": "football-streaming-mobile",
+  "private": true,
+  "description": "Wrapper scripts for the Flutter mobile IPTV application",
+  "scripts": {
+    "start": "flutter run -d chrome",
+    "dev": "flutter run -d chrome",
+    "build": "flutter build web",
+    "analyze": "flutter analyze",
+    "test": "flutter test"
+  }
+}

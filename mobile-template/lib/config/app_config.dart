@@ -1,0 +1,9 @@
+const String embeddedAppName = 'APP_NAME';
+const String embeddedPackageName = 'PACKAGE_NAME';
+const String embeddedServerUrl = 'SERVER_URL';
+const String embeddedTenantId = 'TENANT_ID';
+const String embeddedPrimaryColor = 'PRIMARY_COLOR';
+const String embeddedSecondaryColor = 'SECONDARY_COLOR';
+const String embeddedLogoPath = 'LOGO_PATH';
+const String embeddedAppVersion = 'APP_VERSION';
+const int embeddedAppVersionCode = APP_VERSION_CODE;

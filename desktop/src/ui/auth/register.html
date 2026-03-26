@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Register</title>
+  <link rel="stylesheet" href="./auth.css">
+</head>
+<body>
+  <section class="auth-shell">
+    <p class="eyebrow">Desktop Authentication</p>
+    <h1>Create Account</h1>
+    <p>Register the admin subscription before binding it to this desktop device and streaming server.</p>
+    <form id="registerForm">
+      <label>Name<input id="nameInput" type="text" required></label>
+      <label>Email<input id="emailInput" type="email" required></label>
+      <label>Password<input id="passwordInput" type="password" required></label>
+      <label class="checkbox-row"><input id="trialCheckbox" type="checkbox" checked> Start with optional 3-day trial</label>
+      <label>Plan Selection
+        <select id="planSelect">
+          <option value="trial">Trial</option>
+          <option value="6_months">6 Months</option>
+          <option value="1_year">12 Months</option>
+        </select>
+      </label>
+      <label>Payment Method
+        <select id="paymentProviderSelect">
+          <option value="stripe">Stripe</option>
+          <option value="paypal">PayPal</option>
+        </select>
+      </label>
+      <label>Payment Integration Placeholder<input id="paymentReferenceInput" type="text" placeholder="Transaction or invoice reference"></label>
+      <button class="primary-button" type="submit">Register</button>
+    </form>
+    <div class="status" id="statusLabel"></div>
+    <div class="link-row">
+      <span>Already subscribed?</span>
+      <a href="./login.html">Sign in</a>
+    </div>
+  </section>
+  <script>
+    const statusLabel = document.getElementById("statusLabel");
+    document.getElementById("registerForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusLabel.textContent = "";
+      try {
+        const auth = await window.desktopApi.getAuthStatus();
+        const wantsTrial = document.getElementById("trialCheckbox").checked;
+        await window.desktopApi.registerAdmin({
+          name: document.getElementById("nameInput").value.trim(),
+          email: document.getElementById("emailInput").value.trim(),
+          password: document.getElementById("passwordInput").value,
+          planId: wantsTrial ? "trial" : document.getElementById("planSelect").value,
+          paymentProvider: document.getElementById("paymentProviderSelect").value,
+          paymentReference: document.getElementById("paymentReferenceInput").value.trim(),
+          appVersion: "0.1.0",
+          deviceId: auth.deviceId,
+        });
+        window.desktopApi.notifyLoggedIn();
+      } catch (error) {
+        statusLabel.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Renewal</title>
+  <link rel="stylesheet" href="./auth.css">
+</head>
+<body>
+  <section class="auth-shell">
+    <p class="eyebrow">Subscription Required</p>
+    <h1>Renew Admin Access</h1>
+    <p>Your admin subscription has expired. Renew it here to unlock the IPTV operations dashboard on this device.</p>
+    <div class="session-card" id="sessionCard"></div>
+    <form id="renewalForm">
+      <label>Plan Selection
+        <select id="planSelect">
+          <option value="6_months">6 Months</option>
+          <option value="1_year">12 Months</option>
+        </select>
+      </label>
+      <label>Payment Provider
+        <select id="paymentProviderSelect">
+          <option value="stripe">Stripe</option>
+          <option value="paypal">PayPal</option>
+        </select>
+      </label>
+      <label>Payment Reference Placeholder<input id="paymentReferenceInput" type="text" placeholder="Invoice or transaction reference"></label>
+      <button class="primary-button" type="submit">Renew Subscription</button>
+    </form>
+    <div class="status" id="statusLabel"></div>
+    <div class="link-row">
+      <span>Need another account?</span>
+      <a href="./register.html">Create one</a>
+    </div>
+    <button class="secondary-button" id="logoutButton" type="button">Sign Out</button>
+  </section>
+  <script>
+    const statusLabel = document.getElementById("statusLabel");
+    const sessionCard = document.getElementById("sessionCard");
+
+    async function hydrateSession() {
+      const auth = await window.desktopApi.getAuthStatus();
+      const session = auth.session || {};
+      sessionCard.innerHTML = `
+        <strong>${session.adminName || "Admin subscription"}</strong>
+        <span>${session.adminEmail || "Unknown email"}</span>
+        <span>Device: ${session.deviceId || auth.deviceId || "-"}</span>
+        <span>Status: ${session.subscriptionStatus || "expired"}</span>
+      `;
+    }
+
+    document.getElementById("renewalForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusLabel.textContent = "";
+      try {
+        await window.desktopApi.renewAdmin({
+          planId: document.getElementById("planSelect").value,
+          paymentProvider: document.getElementById("paymentProviderSelect").value,
+          paymentReference: document.getElementById("paymentReferenceInput").value.trim(),
+        });
+        window.desktopApi.notifyLoggedIn();
+      } catch (error) {
+        statusLabel.textContent = error.message;
+      }
+    });
+
+    document.getElementById("logoutButton").addEventListener("click", async () => {
+      await window.desktopApi.logoutAdmin();
+    });
+
+    hydrateSession().catch((error) => {
+      statusLabel.textContent = error.message;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+IPTV Control Panel End User License Agreement
+
+This software is licensed, not sold. By installing or using IPTV Control Panel,
+you agree to use the application only for authorized platform administration and
+in compliance with your service agreement, applicable laws, and platform usage
+policies.
+
+You may not reverse engineer, redistribute, sublicense, or use this software to
+operate unauthorized streaming services, infringe third-party rights, or bypass
+platform security controls.
+
+The software is provided "as is" without warranties except where required by
+law. The publisher is not liable for indirect, incidental, or consequential
+damages arising from use of the software.
+
+If you do not agree to these terms, do not install or use the software.

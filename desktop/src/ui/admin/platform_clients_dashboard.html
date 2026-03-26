@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Platform Clients Dashboard</title>
+  <link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+  <main class="admin-dashboard-shell">
+    <section class="hero-card card">
+      <div>
+        <p class="eyebrow">Platform clients analytics</p>
+        <h2>Platform Clients Dashboard</h2>
+        <p class="hero-copy">Track installs, active subscriptions, revenue estimates, release readiness, and audit activity for the SaaS platform.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="ghost-button" id="refreshPlatformClientsButton">Refresh</button>
+        <button class="primary-button" id="manualUpdateCheckButton">Check for Updates</button>
+      </div>
+    </section>
+
+    <section class="metric-strip">
+      <article class="metric-card"><span class="metric-label">Installs</span><strong id="pcInstallCount">0</strong></article>
+      <article class="metric-card"><span class="metric-label">Unique Devices</span><strong id="pcUniqueDevices">0</strong></article>
+      <article class="metric-card"><span class="metric-label">Active Subscriptions</span><strong id="pcActiveSubscriptions">0</strong></article>
+      <article class="metric-card"><span class="metric-label">Revenue Estimate</span><strong id="pcRevenue">$0</strong></article>
+    </section>
+
+    <section class="analytics-grid full">
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>Install Trend</h3><span id="pcReleaseLabel">Release pending</span></div>
+        <div class="chart-container"><canvas id="pcInstallChart"></canvas></div>
+      </article>
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>Subscription Revenue</h3><span>Estimated by plan</span></div>
+        <div class="chart-container"><canvas id="pcRevenueChart"></canvas></div>
+      </article>
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>Release Status</h3><span>Current desktop channel</span></div>
+        <div id="pcReleaseCard" class="list medium-list"></div>
+      </article>
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>Install Records</h3><span>Latest desktop activations</span></div>
+        <div class="viewer-history">
+          <table class="data-table">
+            <thead><tr><th>Client</th><th>Device</th><th>Version</th><th>Status</th><th>Installed</th></tr></thead>
+            <tbody id="pcInstallTable"></tbody>
+          </table>
+        </div>
+      </article>
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>Subscription Records</h3><span>Renewals and terms</span></div>
+        <div class="viewer-history">
+          <table class="data-table">
+            <thead><tr><th>Plan</th><th>Client</th><th>Revenue</th><th>Ends</th><th>Status</th></tr></thead>
+            <tbody id="pcSubscriptionTable"></tbody>
+          </table>
+        </div>
+      </article>
+      <article class="analytics-card section-card">
+        <div class="pane-header compact"><h3>System Logs</h3><span>Recent API activity</span></div>
+        <div class="viewer-history">
+          <table class="data-table">
+            <thead><tr><th>Route</th><th>Method</th><th>Status</th><th>Device</th><th>When</th></tr></thead>
+            <tbody id="pcAuditTable"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="../../../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script>
+    let installChart;
+    let revenueChart;
+    const $ = (id) => document.getElementById(id);
+    const money = (value) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(value || 0));
+    const dateText = (value) => {
+      const date = new Date(value || "");
+      return Number.isNaN(date.getTime()) ? (value || "-") : date.toLocaleString();
+    };
+    const html = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+
+    function renderRows(target, items, mapper, columns) {
+      target.innerHTML = items.length ? items.map(mapper).join("") : `<tr><td colspan="${columns}" class="empty-table">No data yet.</td></tr>`;
+    }
+
+    function bucketSeries(items, field, valueField) {
+      const buckets = new Map();
+      for (const item of items) {
+        const key = String(item[field] || "").slice(0, 10) || "Unknown";
+        buckets.set(key, (buckets.get(key) || 0) + Number(item[valueField] || 1));
+      }
+      return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    function renderCharts(installs, subscriptions) {
+      if (!window.Chart) return;
+      const installTrend = bucketSeries(installs, "install_timestamp", "");
+      const revenueTrend = bucketSeries(subscriptions, "timestamp", "estimated_revenue");
+      if (installChart) installChart.destroy();
+      if (revenueChart) revenueChart.destroy();
+      installChart = new window.Chart($("pcInstallChart"), {
+        type: "line",
+        data: { labels: installTrend.map((item) => item[0]), datasets: [{ label: "Installs", data: installTrend.map((item) => item[1]), borderColor: "#39d98a", backgroundColor: "rgba(57, 217, 138, 0.18)", fill: true, tension: 0.35 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "#edf4ff" } } }, scales: { x: { ticks: { color: "#8fa6c4" }, grid: { color: "rgba(255,255,255,0.06)" } }, y: { ticks: { color: "#8fa6c4" }, grid: { color: "rgba(255,255,255,0.06)" } } } }
+      });
+      revenueChart = new window.Chart($("pcRevenueChart"), {
+        type: "bar",
+        data: { labels: revenueTrend.map((item) => item[0]), datasets: [{ label: "Revenue", data: revenueTrend.map((item) => item[1]), backgroundColor: ["#1fc9b1", "#39d98a", "#f3bc68", "#60a5fa", "#fb7185"] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "#edf4ff" } } }, scales: { x: { ticks: { color: "#8fa6c4" }, grid: { color: "rgba(255,255,255,0.06)" } }, y: { ticks: { color: "#8fa6c4" }, grid: { color: "rgba(255,255,255,0.06)" } } } }
+      });
+    }
+
+    async function refreshDashboard() {
+      const [dashboardPayload, analyticsPayload] = await Promise.all([
+        window.desktopApi.fetchWhiteLabelInstalls(),
+        window.desktopApi.fetchWhiteLabelSubscriptions(),
+      ]);
+      const summary = dashboardPayload.summary || analyticsPayload.summary || {};
+      const installs = dashboardPayload.installs || [];
+      const subscriptions = analyticsPayload.subscriptions || [];
+      const audits = dashboardPayload.audit_logs || [];
+      const release = dashboardPayload.release || analyticsPayload.release || {};
+
+      $("pcInstallCount").textContent = String(summary.install_count || 0);
+      $("pcUniqueDevices").textContent = String(summary.unique_devices || 0);
+      $("pcActiveSubscriptions").textContent = String(summary.active_subscription_count || 0);
+      $("pcRevenue").textContent = money(summary.estimated_revenue || 0);
+      $("pcReleaseLabel").textContent = `Latest ${release.latest_version || "unknown"}`;
+      $("pcReleaseCard").innerHTML = `
+        <article class="analytics-row">
+          <div>
+            <strong>Latest Version</strong>
+            <div class="subtle">${html(release.latest_version || "0.1.0")} | Published ${html(dateText(release.published_at))}</div>
+            <div class="subtle">${html(release.release_notes || "Release notes not configured.")}</div>
+          </div>
+          <div class="analytics-value">${html(release.minimum_supported_version || release.latest_version || "0.1.0")}</div>
+        </article>
+      `;
+
+      renderRows($("pcInstallTable"), installs.slice().reverse().slice(0, 50), (item) => `<tr><td>${html(item.admin_email || item.admin_name || "-")}</td><td>${html(item.device_id || "-")}</td><td>${html(item.app_version || "-")}</td><td>${html(item.subscription_status || "-")}</td><td>${html(dateText(item.install_timestamp || item.timestamp))}</td></tr>`, 5);
+      renderRows($("pcSubscriptionTable"), subscriptions.slice().reverse().slice(0, 50), (item) => `<tr><td>${html(item.subscription_plan || "-")}</td><td>${html(item.admin_email || item.admin_name || "-")}</td><td>${html(money(item.estimated_revenue || 0))}</td><td>${html(dateText(item.end_date))}</td><td>${html(item.subscription_status || "-")}</td></tr>`, 5);
+      renderRows($("pcAuditTable"), audits.slice().reverse().slice(0, 75), (item) => `<tr><td>${html(item.path || "-")}</td><td>${html(item.method || "-")}</td><td>${html(item.status_code || "-")}</td><td>${html(item.device_id || "-")}</td><td>${html(dateText(item.timestamp))}</td></tr>`, 5);
+      renderCharts(installs, subscriptions);
+    }
+
+    $("refreshPlatformClientsButton").addEventListener("click", () => refreshDashboard().catch(console.error));
+    $("manualUpdateCheckButton").addEventListener("click", () => window.desktopApi.checkForUpdates().catch(console.error));
+    refreshDashboard().catch(console.error);
+  </script>
+</body>
+</html>

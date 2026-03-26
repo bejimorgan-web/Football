@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http://127.0.0.1:8000 http://localhost:8000 https:; media-src 'self' blob: https: http:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Football IPTV Operations Dashboard</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <p class="eyebrow">Broadcast Ops</p>
+        <h1>IPTV Desk</h1>
+        <span class="sidebar-subtitle">Football streaming administration</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active role-client role-master" data-section="dashboard">Dashboard</button>
+        <button class="nav-item role-client role-master" data-section="streams">Streams</button>
+        <button class="nav-item role-client role-master" data-section="catalog">Football Catalog</button>
+        <button class="nav-item role-client role-master" data-section="providers">Providers</button>
+        <button class="nav-item role-client role-master" data-section="analytics">Analytics</button>
+        <button class="nav-item role-client role-master" data-section="branding">Branding</button>
+        <button class="nav-item role-client role-master" data-section="mobile_builder">Mobile App Settings</button>
+        <button class="nav-item role-master hidden" data-section="users">Users</button>
+        <button class="nav-item role-master hidden" data-section="platform_clients">Platform Clients</button>
+        <button class="nav-item role-master hidden" data-section="system_logs">System Logs</button>
+        <button class="nav-item role-master hidden" data-section="security">Security</button>
+      </nav>
+      <div class="sidebar-status card">
+        <span class="detail-label">Active Provider</span>
+        <strong id="activeProviderLabel">None</strong>
+        <span class="subtle">Desktop Version: <span id="desktopVersionLabel">0.0.0</span></span>
+        <div class="status-chip">Operations ready</div>
+      </div>
+    </aside>
+    <div class="main-shell">
+      <header class="workspace-topbar">
+        <div>
+          <p class="eyebrow">Professional IPTV Operations</p>
+          <h2 id="workspaceTitle">Dashboard</h2>
+          <p id="workspaceSubtitle" class="workspace-subtitle">Monitor streams, approvals, users, security, and system health from one workspace.</p>
+        </div>
+        <div class="header-account card">
+          <strong id="welcomeClientLabel">Welcome, Client</strong>
+          <span class="subtle" id="headerSubscriptionLabel">Subscription: -</span>
+          <span class="subtle" id="headerPlanLabel">Plan: -</span>
+          <span class="subtle" id="headerServerLabel">Server ID: -</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="openProviderManagerButton">Providers</button>
+          <button class="ghost-button" id="backupNowButton">Backup Now</button>
+          <button class="ghost-button" id="refreshStreamsButton">Refresh Data</button>
+          <button class="primary-button" id="syncProviderButton">Sync Active Provider</button>
+        </div>
+      </header>
+      <main class="content-area">
+        <section class="view active" data-view="dashboard">
+          <div class="hero-card card">
+            <div>
+              <p class="eyebrow">Operations Overview</p>
+              <h3>Central command for football IPTV workflows</h3>
+              <p class="hero-copy">Keep streams, approvals, catalog assets, user sessions, backups, and tenant controls organized without crowding the live workflow.</p>
+            </div>
+            <div class="hero-actions">
+              <button class="primary-button" data-nav-target="streams">Open Stream Workflow</button>
+              <button class="ghost-button master-only" data-nav-target="analytics">Open Analytics</button>
+            </div>
+          </div>
+          <section id="setupWizardCard" class="card section-card setup-wizard hidden">
+            <div class="pane-header compact">
+              <div>
+                <p class="eyebrow">First-Time Setup</p>
+                <h3>Launch Your Tenant In Four Steps</h3>
+                <p>Complete server binding, provider setup, league data, and mobile publishing before going live.</p>
+              </div>
+              <button class="primary-button small-button" id="completeSetupButton">Mark Setup Complete</button>
+            </div>
+            <div id="setupStepList" class="setup-step-list"></div>
+            <div class="setup-meta">
+              <div><span class="detail-label">Mobile API Token</span><strong id="setupMobileToken">-</strong></div>
+              <div><span class="detail-label">Bound Server</span><strong id="setupServerId">-</strong></div>
+            </div>
+          </section>
+          <section class="metric-strip">
+            <article class="metric-card"><span class="metric-label">Total Users</span><strong id="totalUsersLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Trial Users</span><strong id="trialUsersLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Active Users</span><strong id="activeUsersLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Blocked Users</span><strong id="blockedUsersLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Live Viewers</span><strong id="liveViewersLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Nations</span><strong id="nationCountLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Competitions</span><strong id="competitionCountLabel">0</strong></article>
+            <article class="metric-card"><span class="metric-label">Approved Matches</span><strong id="approvedCountLabel">0</strong></article>
+          </section>
+          <section class="dashboard-grid">
+            <article class="card section-card">
+              <div class="pane-header compact">
+                <div>
+                  <h3>Live Activity Snapshot</h3>
+                  <p>Audience and stream health at a glance.</p>
+                </div>
+                <button class="ghost-button small-button" id="refreshAnalyticsButton">Refresh Analytics</button>
+              </div>
+              <div class="analytics-metrics">
+                <div><span class="detail-label">Live Viewers</span><strong id="analyticsLiveViewersLabel">0</strong></div>
+                <div><span class="detail-label">Active Streams</span><strong id="analyticsActiveStreamsLabel">0</strong></div>
+                <div><span class="detail-label">Competitions</span><strong id="analyticsCompetitionsLabel">0</strong></div>
+              </div>
+              <div id="analyticsStreamsList" class="list medium-list viewer-history"></div>
+            </article>
+            <article class="card section-card master-only">
+              <div class="pane-header compact">
+                <div>
+                  <h3>Master Live Feed</h3>
+                  <p>Protected master refresh for version control, stream analytics, live scores, standings, and fixtures.</p>
+                </div>
+                <span id="masterLiveUpdatedLabel" class="subtle">Waiting for refresh...</span>
+              </div>
+              <div class="analytics-metrics">
+                <div><span class="detail-label">Desktop Channel</span><strong id="masterLiveVersionLabel">-</strong></div>
+                <div><span class="detail-label">Tracked Streams</span><strong id="masterLiveStreamsLabel">0</strong></div>
+                <div><span class="detail-label">Live Matches</span><strong id="masterLiveScoresLabel">0</strong></div>
+              </div>
+              <div id="masterLiveList" class="list medium-list viewer-history"></div>
+            </article>
+            <article class="card section-card">
+              <div class="pane-header compact">
+                <div>
+                  <h3>Security Snapshot</h3>
+                  <p>VPN activity, flagged devices, and blocked endpoints.</p>
+                </div>
+                <button class="ghost-button small-button" id="refreshSecurityButton">Refresh Security</button>
+              </div>
+              <div class="security-summary">
+                <div class="security-pill"><span>Flagged</span><strong id="securityFlaggedCount">0 flagged</strong></div>
+                <div class="security-pill"><span>VPN</span><strong id="securityVpnCount">0 vpn</strong></div>
+                <div class="security-pill"><span>Blocked</span><strong id="securityBlockedCount">0 blocked</strong></div>
+              </div>
+              <div id="securityFlaggedList" class="list medium-list"></div>
+            </article>
+            <article class="card section-card">
+              <div class="pane-header compact">
+                <div>
+                  <h3>Backup Operations</h3>
+                  <p>Retention, runtime readiness, and recovery history.</p>
+                </div>
+                <button class="ghost-button small-button" data-nav-target="backups">Open Backups</button>
+              </div>
+              <div class="backup-summary">
+                <div><span class="detail-label">Python Runtime</span><strong id="pythonRuntimeLabel">Checking runtime...</strong></div>
+                <div><span class="detail-label">Last Backup</span><strong id="backupLastRunLabel">No backup run yet.</strong></div>
+                <div><span class="detail-label">Archives</span><strong id="backupCountLabel">0 archives</strong></div>
+              </div>
+              <div id="backupLogList" class="list medium-list"></div>
+            </article>
+          </section>
+        </section>
+        <section class="view" data-view="streams">
+          <section class="card section-card workspace-banner">
+            <div class="pane-header">
+              <div>
+                <h3>Stream Operations Workflow</h3>
+                <p>Provider sync, live preview, football metadata mapping, and approval in one responsive workspace.</p>
+              </div>
+            </div>
+              <div class="backend-grid">
+                <div class="metadata-card">
+                  <div class="pane-header compact">
+                    <div><h4>Backend API</h4><p>Used by Chrome preview and desktop runtime requests.</p></div>
+                    <span id="backendApiState" class="pill">Disconnected</span>
+                  </div>
+                  <div class="field"><label for="backendApiUrlInput">URL</label><input id="backendApiUrlInput" type="text" placeholder="http://127.0.0.1:8000"></div>
+                  <div class="field"><label for="backendApiTokenInput">API Token</label><input id="backendApiTokenInput" type="password" placeholder="backend token"></div>
+                  <div class="form-actions">
+                    <button class="ghost-button" id="backendApiTestButton" type="button">Test</button>
+                    <button class="ghost-button" id="backendApiDisconnectButton" type="button">Disconnect</button>
+                    <button class="primary-button" id="backendApiConnectButton" type="button">Connect</button>
+                  </div>
+                </div>
+                <div class="metadata-card">
+                  <div class="pane-header compact">
+                    <div><h4>Public API</h4><p>Used for APK/public distribution endpoints.</p></div>
+                    <span id="publicApiState" class="pill">Disconnected</span>
+                  </div>
+                  <div class="field"><label for="publicApiUrlInput">URL</label><input id="publicApiUrlInput" type="text" placeholder="https://api.platform.com"></div>
+                  <div class="field"><label for="publicApiTokenInput">API Token</label><input id="publicApiTokenInput" type="password" placeholder="public token"></div>
+                  <div class="form-actions">
+                    <button class="ghost-button" id="publicApiTestButton" type="button">Test</button>
+                    <button class="ghost-button" id="publicApiDisconnectButton" type="button">Disconnect</button>
+                    <button class="primary-button" id="publicApiConnectButton" type="button">Connect</button>
+                  </div>
+                </div>
+                <div class="field auth-hidden"><label for="adminUsernameInput">Admin User</label><input id="adminUsernameInput" type="text" placeholder="optional"></div>
+              <div class="field auth-hidden"><label for="adminPasswordInput">Admin Password</label><input id="adminPasswordInput" type="password" placeholder="optional"></div>
+              <div class="field auth-hidden"><label for="tenantSelect">Tenant</label><select id="tenantSelect"></select></div>
+              <div class="field auth-hidden"><label for="tenantUsernameInput">Tenant Admin</label><input id="tenantUsernameInput" type="text" placeholder="tenant admin"></div>
+              <div class="field auth-hidden"><label for="tenantPasswordInput">Tenant Password</label><input id="tenantPasswordInput" type="password" placeholder="tenant password"></div>
+              <label class="toggle">
+                <input id="chromePreviewApiToggle" type="checkbox">
+                <span>Temporarily use Public API for Chrome preview testing</span>
+              </label>
+            </div>
+            <div class="toolbar-row">
+              <button class="ghost-button" id="saveBackendSettingsButton">Save Session Settings</button>
+              <button class="ghost-button auth-hidden" id="tenantLoginButton">Tenant Login</button>
+            </div>
+          </section>
+          <section class="stream-grid">
+            <article class="card section-card stream-panel">
+              <div class="pane-header compact"><div><h3>Football Catalog</h3><p>Nations, competitions, clubs, and logos.</p></div><button class="ghost-button small-button" data-nav-target="catalog">Manage Catalog</button></div>
+              <div class="catalog-mini-grid">
+                <div class="catalog-mini-card"><div class="pane-header compact"><h4>Nations</h4><button class="ghost-button small-button" id="newNationButton">New</button></div><div id="nationList" class="list short-list"></div></div>
+                <div class="catalog-mini-card"><div class="pane-header compact"><h4>Competitions</h4><button class="ghost-button small-button" id="newCompetitionButton">New</button></div><div id="competitionList" class="list short-list"></div></div>
+                <div class="catalog-mini-card"><div class="pane-header compact"><h4>Clubs</h4><button class="ghost-button small-button" id="newClubButton">New</button></div><div id="clubList" class="list short-list"></div></div>
+              </div>
+            </article>
+            <article class="card section-card stream-panel">
+              <div class="pane-header compact">
+                <div><h3>Provider Groups</h3><p id="groupSummary">0 groups</p></div>
+                <div class="field compact-field"><label for="streamProviderSelect">Provider</label><select id="streamProviderSelect"></select></div>
+              </div>
+              <div id="groupList" class="list tall-list"></div>
+            </article>
+            <article class="card section-card stream-panel">
+              <div class="pane-header compact"><div><h3>Stream Approval Panel</h3><p id="channelPaneSubtitle">Select a provider group to map source streams.</p></div></div>
+              <div id="channelList" class="list medium-list"></div>
+              <form id="approveForm" class="approval-form">
+                <div class="selected-stream-summary"><span class="detail-label">Selected Stream</span><strong id="approvalSelectedStream">No stream selected</strong></div>
+                <div class="form-grid">
+                  <div class="field"><label for="approveNationSelect">Nation</label><select id="approveNationSelect"></select></div>
+                  <div class="field"><label for="approveCompetitionSelect">Competition</label><select id="approveCompetitionSelect"></select></div>
+                  <div class="field"><label for="approveHomeClubSelect">Home Club</label><select id="approveHomeClubSelect"></select></div>
+                  <div class="field"><label for="approveAwayClubSelect">Away Club</label><select id="approveAwayClubSelect"></select></div>
+                  <div class="field full-width"><label for="approveKickoffInput">Kickoff Label</label><input id="approveKickoffInput" type="text" placeholder="Sunday 20:00"></div>
+                </div>
+                <div class="approval-preview full-width">
+                  <div class="asset-pill"><div id="approveCompetitionLogoPreview" class="asset-logo"></div><div><span class="detail-label">Competition</span><strong id="approveCompetitionNamePreview">-</strong></div></div>
+                  <div class="match-preview-card">
+                    <div class="match-side"><div id="approveHomeClubLogoPreview" class="asset-logo large"></div><strong id="approveHomeClubNamePreview">Home</strong></div>
+                    <div class="versus-mark">VS</div>
+                    <div class="match-side"><div id="approveAwayClubLogoPreview" class="asset-logo large"></div><strong id="approveAwayClubNamePreview">Away</strong></div>
+                  </div>
+                  <div class="preview-caption" id="approvePreviewLabel">Select the football metadata for this stream.</div>
+                </div>
+                <div class="form-actions full-width"><button type="submit" class="primary-button">Approve Match</button></div>
+              </form>
+            </article>
+            <article class="card section-card preview-panel">
+              <div class="pane-header compact"><div><h3>Preview Player</h3><p id="previewTitle">Choose a stream to preview and approve.</p></div></div>
+              <div class="preview-player"><video id="preview-player" controls autoplay playsinline></video><div id="previewOverlay" class="preview-overlay">No stream selected</div></div>
+              <div class="preview-meta">
+                <div><span class="detail-label">Source Group</span><strong id="previewGroup">-</strong></div>
+                <div><span class="detail-label">Source Name</span><strong id="previewId">-</strong></div>
+                <div><span class="detail-label">Approved Match</span><strong id="previewCompetition">Not mapped</strong></div>
+              </div>
+              <div class="preview-actions"><button class="primary-button" id="approveChannelButton" disabled>Approve From Preview</button><button class="ghost-button" id="removeApprovedButton" disabled>Remove Mapping</button></div>
+              <div class="approved-section"><div class="pane-header compact"><h4>Approved Matches</h4><span>Catalog exposed to the mobile app</span></div><div id="approvedList" class="approved-list"></div></div>
+            </article>
+          </section>
+        </section>
+        <section class="view" data-view="catalog">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Football Catalog Management</h3><p>Create, edit, and brand nations, competitions, and clubs with reusable logo assets.</p></div></div>
+            <div class="tab-row">
+              <button class="tab-button active" data-catalog-tab="nations">Nations</button>
+              <button class="tab-button" data-catalog-tab="competitions">Competitions</button>
+              <button class="tab-button" data-catalog-tab="clubs">Clubs</button>
+            </div>
+            <div class="catalog-management-grid">
+              <article class="catalog-panel active" data-catalog-panel="nations"><div class="pane-header compact"><div><h4>Nations</h4><p>Create and maintain national football collections.</p></div><button class="primary-button small-button" id="catalogNewNationButton">Create Nation</button></div><div id="catalogNationList" class="list tall-list"></div></article>
+              <article class="catalog-panel" data-catalog-panel="competitions"><div class="pane-header compact"><div><h4>Competitions</h4><p>Edit tournaments, leagues, and logos by nation.</p></div><button class="primary-button small-button" id="catalogNewCompetitionButton">Create Competition</button></div><div id="catalogCompetitionList" class="list tall-list"></div></article>
+              <article class="catalog-panel" data-catalog-panel="clubs"><div class="pane-header compact"><div><h4>Clubs</h4><p>Manage teams, club branding, and competition defaults.</p></div><button class="primary-button small-button" id="catalogNewClubButton">Create Club</button></div><div id="catalogClubList" class="list tall-list"></div></article>
+            </div>
+          </section>
+        </section>
+        <section class="view master-only" data-view="users">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>User Device Operations</h3><p>Subscription status, trial state, online monitoring, and direct device actions.</p></div><button class="ghost-button small-button" id="refreshUsersButton">Refresh Users</button></div>
+            <div class="users-header-grid"><div><span class="detail-label">All Devices</span><strong id="userCountCaption">0 users</strong></div><div><span class="detail-label">Online Now</span><strong id="onlineCountCaption">0 live</strong></div></div>
+            <div class="users-grid"><div class="viewer-history"><table class="data-table"><thead><tr><th>User</th><th>Status</th><th>Expiry Date</th><th>Actions</th></tr></thead><tbody id="userList"></tbody></table></div><aside class="side-stack"><article class="inner-card"><div class="pane-header compact"><h4>Active Sessions</h4><span>Currently online</span></div><div id="onlineUserList" class="list medium-list"></div></article></aside></div>
+          </section>
+        </section>
+        <section class="view" data-view="analytics">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Client Analytics</h3><p>Live viewers, top competitions, top matches, active users, and viewing history.</p></div><button class="ghost-button small-button" id="analyticsRefreshButtonDuplicate">Refresh Analytics</button></div>
+            <div class="analytics-grid full">
+              <article class="analytics-card"><div class="pane-header compact"><h4>Live Viewers</h4><span id="analyticsRefreshLabel">Auto refresh: 10s</span></div><div class="analytics-metrics"><div><span class="detail-label">Live Viewers</span><strong id="analyticsLiveViewersLabelDuplicate">0</strong></div><div><span class="detail-label">Active Streams</span><strong id="analyticsActiveStreamsLabelDuplicate">0</strong></div><div><span class="detail-label">Competitions</span><strong id="analyticsCompetitionsLabelDuplicate">0</strong></div></div><div id="analyticsStreamsListDuplicate" class="list medium-list viewer-history"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Top Matches</h4><span>Viewer sessions</span></div><div id="analyticsTopMatchesList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Top Competitions</h4><span>Most watched</span></div><div id="analyticsTopCompetitionsList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Live Viewers History</h4><span>Daily sessions</span></div><div class="chart-container"><canvas id="dailyViewersChart"></canvas></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Top Competitions Graph</h4><span>Competition popularity</span></div><div class="chart-container"><canvas id="competitionPopularityChart"></canvas></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Audience Countries</h4><span>Geographic reach</span></div><div id="analyticsCountriesList" class="list medium-list"></div></article>
+            </div>
+          </section>
+        </section>
+        <section class="view master-only" data-view="platform_clients">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Platform Clients</h3><p>Manage SaaS client accounts, server bindings, and trial extensions.</p></div><button class="ghost-button small-button" id="refreshPlatformClientsButton">Refresh Clients</button></div>
+            <section class="metric-strip">
+              <article class="metric-card"><span class="metric-label">Total Clients</span><strong id="platformClientsTotalLabel">0</strong></article>
+              <article class="metric-card"><span class="metric-label">Active Clients</span><strong id="platformClientsActiveLabel">0</strong></article>
+              <article class="metric-card"><span class="metric-label">Trial Clients</span><strong id="platformClientsTrialLabel">0</strong></article>
+              <article class="metric-card"><span class="metric-label">Blocked Clients</span><strong id="platformClientsBlockedLabel">0</strong></article>
+              <article class="metric-card"><span class="metric-label">Expired Clients</span><strong id="platformClientsExpiredLabel">0</strong></article>
+            </section>
+            <div class="viewer-history">
+              <table class="data-table">
+                <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Trial Days</th><th>Subscription Expiry</th><th>Server ID</th><th>Actions</th></tr></thead>
+                <tbody id="platformClientsTable"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>System Updates</h3><p>Upload desktop installers, publish forced updates, and review version history.</p></div></div>
+            <div class="settings-grid">
+              <article class="card section-card compact-card">
+                <div class="pane-header compact"><div><h4>Publish Update</h4><p>Installer types: `.exe`, `.dmg`, `.AppImage` up to 500MB.</p></div></div>
+                <form id="publishUpdateForm" class="stack-form">
+                  <div class="field"><label for="updateVersionInput">Version</label><input id="updateVersionInput" type="text" placeholder="1.1.0" required></div>
+                  <div class="field"><label for="updateInstallerInput">Upload Installer</label><input id="updateInstallerInput" type="file" accept=".exe,.dmg,.AppImage" required></div>
+                  <div class="field"><label for="updateReleaseNotesInput">Release Notes</label><textarea id="updateReleaseNotesInput" rows="5" placeholder="Improved stream approval panel and analytics performance"></textarea></div>
+                  <label class="toggle"><input id="updateMandatoryInput" type="checkbox"><span>Mandatory update</span></label>
+                  <div class="form-actions"><button type="submit" class="primary-button">Publish Update</button></div>
+                </form>
+              </article>
+              <article class="card section-card compact-card">
+                <div class="pane-header compact"><div><h4>Latest Published Build</h4><p>The current desktop version served by the backend update feed.</p></div></div>
+                <div class="server-status-grid">
+                  <div class="security-pill"><span class="detail-label">Version</span><strong id="latestPublishedVersionLabel">-</strong></div>
+                  <div class="security-pill"><span class="detail-label">Release Date</span><strong id="latestPublishedDateLabel">-</strong></div>
+                  <div class="security-pill"><span class="detail-label">Download</span><strong id="latestPublishedDownloadLabel">-</strong></div>
+                  <div class="security-pill"><span class="detail-label">Mandatory</span><strong id="latestPublishedMandatoryLabel">No</strong></div>
+                </div>
+              </article>
+            </div>
+            <div class="viewer-history">
+              <table class="data-table">
+                <thead><tr><th>Version</th><th>Date</th><th>Platforms</th><th>Mandatory</th><th>Notes</th></tr></thead>
+                <tbody id="updateHistoryTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        <section class="view master-only" data-view="system_logs">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>System Logs</h3><p>Recent audit activity across protected admin APIs.</p></div></div>
+            <div class="viewer-history">
+              <table class="data-table">
+                <thead><tr><th>Route</th><th>Method</th><th>Status</th><th>Client</th><th>Device</th><th>When</th></tr></thead>
+                <tbody id="systemLogsTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        <section class="view role-client role-master" data-view="providers">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Providers</h3><p>Manage IPTV provider credentials and select the active source for ingestion.</p></div><button class="primary-button small-button" id="openProviderManagerButtonDuplicate">Open Provider Manager</button></div>
+            <div id="providerWorkspaceList" class="list tall-list"></div>
+          </section>
+        </section>
+        <section class="view" data-view="security">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Security Center</h3><p>VPN users, suspicious IP changes, device sharing detection, blocked devices, and lock controls.</p></div></div>
+            <div class="security-grid">
+              <article class="analytics-card"><div class="pane-header compact"><h4>VPN Users</h4><span>Detected sessions</span></div><div id="securityVpnList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Suspicious IP Changes</h4><span>Recent movement</span></div><div id="securityIpList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Blocked Devices</h4><span>Lock controls</span></div><div id="securityBlockedList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Device Sharing Detection</h4><span>Flagged endpoints</span></div><div id="securityFlaggedListDuplicate" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Security Logs</h4><span>Latest events</span></div><div id="securityLogsList" class="list medium-list"></div></article>
+            </div>
+          </section>
+        </section>
+        <section class="view role-client role-master" data-view="branding">
+          <section class="settings-grid">
+            <article class="card section-card" id="settingsTenantPanel">
+              <div class="pane-header"><div><h3>Subscription</h3><p>View the authenticated admin account, bound desktop device, and backend target.</p></div></div>
+              <div class="backend-grid">
+                <div class="field"><label for="settingsBackendUrlMirror">Backend API</label><input id="settingsBackendUrlMirror" type="text" disabled></div>
+                <div class="field"><label for="settingsTenantMirror">Admin Email</label><input id="settingsTenantMirror" type="text" disabled></div>
+                <div class="field"><label for="settingsTenantUserMirror">Bound Device</label><input id="settingsTenantUserMirror" type="text" disabled></div>
+              </div>
+              <div class="toolbar-row"><button class="ghost-button" data-nav-target="streams">Open Stream Workflow</button></div>
+            </article>
+            <article class="card section-card" id="settingsBrandingPanel">
+              <div class="pane-header"><div><h3>Branding</h3><p>App name, uploaded assets, and mobile theme colors for this platform client.</p></div><button class="ghost-button small-button" id="saveBrandingButton">Save Branding</button></div>
+              <div class="metadata-grid">
+                <article class="metadata-card"><div class="field"><label for="brandingAppNameInput">App Name</label><input id="brandingAppNameInput" type="text" placeholder="Club TV"></div><div class="field"><label for="brandingPrimaryColorInput">Primary</label><input id="brandingPrimaryColorInput" type="text" placeholder="#11B37C"></div><div class="field"><label for="brandingAccentColorInput">Accent</label><input id="brandingAccentColorInput" type="text" placeholder="#7EE3AF"></div></article>
+                <article class="metadata-card"><div class="field"><label for="brandingSurfaceColorInput">Surface</label><input id="brandingSurfaceColorInput" type="text" placeholder="#0D1E2B"></div><div class="field"><label for="brandingBackgroundColorInput">Background</label><input id="brandingBackgroundColorInput" type="text" placeholder="#07141E"></div><div class="field"><label for="brandingTextColorInput">Text</label><input id="brandingTextColorInput" type="text" placeholder="#F2F8FF"></div></article>
+                <article class="metadata-card"><div class="field"><label for="brandingLogoFileInput">App Logo Upload</label><input id="brandingLogoFileInput" type="file" accept="image/*"></div><div class="field"><label for="brandingIconFileInput">App Icon Upload</label><input id="brandingIconFileInput" type="file" accept="image/*"></div><div class="field"><label for="brandingSecondaryColorInput">Secondary</label><input id="brandingSecondaryColorInput" type="text" placeholder="#7EE3AF"></div></article>
+              </div>
+            </article>
+            <article class="card section-card" id="settingsServerPanel">
+              <div class="pane-header"><div><h3>Server Management</h3><p>Runtime visibility, binding status, and packaged desktop backend information.</p></div></div>
+              <div class="toolbar-row"><button class="ghost-button master-only" id="openWhiteLabelDashboardButton">Open Platform Clients Dashboard</button><button class="ghost-button" id="manualUpdateCheckButton">Check Desktop Updates</button></div>
+              <div class="server-update-card">
+                <div class="security-pill"><span class="detail-label">Update Status</span><strong id="updateStatusBadge">Idle</strong></div>
+                <div class="security-pill"><span class="detail-label">Latest Version</span><strong id="updateLatestVersionLabel">-</strong></div>
+                <div class="security-pill"><span class="detail-label">Mandatory</span><strong id="updateMandatoryLabel">No</strong></div>
+                <div class="security-pill"><span class="detail-label">Release Date</span><strong id="updateReleaseDateLabel">-</strong></div>
+              </div>
+              <div class="update-progress-card">
+                <label for="updateProgressBar">Desktop update progress</label>
+                <progress id="updateProgressBar" max="100" value="0"></progress>
+                <p id="updateProgressLabel" class="subtle">The desktop checks in the background every 6 hours.</p>
+                <p id="updateReleaseNotesLabel" class="subtle">No release notes published yet.</p>
+              </div>
+              <div id="serverStatusPanel" class="server-status-grid"></div>
+            </article>
+            <article class="card section-card">
+              <div class="pane-header"><div><h3>Backup Operations</h3><p>Open the dedicated backups workspace for one-click backup, restore, scheduling, and retention.</p></div></div>
+              <div class="toolbar-row"><button class="ghost-button" data-nav-target="backups">Open Backups Workspace</button></div>
+            </article>
+          </section>
+        </section>
+        <section class="view role-client role-master" data-view="mobile_builder">
+          <section class="card section-card">
+            <div class="pane-header">
+              <div>
+                <h3>Mobile App Settings</h3>
+                <p>Configure the branded mobile app once, generate the APK a single time, then push branding changes dynamically from the backend.</p>
+              </div>
+              <button class="ghost-button small-button" id="refreshMobileBuildsButton">Refresh Builds</button>
+            </div>
+            <div class="metadata-grid">
+              <article class="metadata-card">
+                <div class="field"><label for="mobileBuilderAppNameInput">App Name</label><input id="mobileBuilderAppNameInput" type="text" placeholder="GoalTV"></div>
+                <div class="field"><label for="mobileBuilderPackageInput">Package Name</label><input id="mobileBuilderPackageInput" type="text" placeholder="com.goaltv.mobile"></div>
+                <div class="field"><label for="mobileBuilderServerUrlInput">Server URL</label><input id="mobileBuilderServerUrlInput" type="text" placeholder="https://api.platform.com"></div>
+              </article>
+              <article class="metadata-card">
+                <div class="field"><label for="mobileBuilderPrimaryColorInput">Primary Color</label><input id="mobileBuilderPrimaryColorInput" type="text" placeholder="#11B37C"></div>
+                <div class="field"><label for="mobileBuilderSecondaryColorInput">Secondary Color</label><input id="mobileBuilderSecondaryColorInput" type="text" placeholder="#7EE3AF"></div>
+                <div class="field"><label for="mobileBuilderTenantIdLabel">Tenant ID</label><input id="mobileBuilderTenantIdLabel" type="text" disabled></div>
+              </article>
+              <article class="metadata-card">
+                <div class="field"><label for="mobileBuilderLogoInput">Logo Upload</label><input id="mobileBuilderLogoInput" type="file" accept="image/*"></div>
+                <div class="field"><label for="mobileBuilderSplashInput">Splash Upload</label><input id="mobileBuilderSplashInput" type="file" accept="image/*"></div>
+                <div class="form-actions">
+                  <button class="ghost-button" id="saveMobileAppSettingsButton" type="button">Save Mobile Settings</button>
+                  <button class="primary-button" id="generateMobileApkButton" type="button">Generate APK</button>
+                  <button class="ghost-button" id="cancelMobileBuildButton" type="button">Cancel Build</button>
+                </div>
+                <p id="mobileBuildLockMessage" class="subtle">Branding updates sync into the installed mobile app on launch and every 12 hours.</p>
+              </article>
+            </div>
+            <div class="server-update-card">
+              <div class="security-pill"><span class="detail-label">Status</span><strong id="mobileBuildStatusLabel">Idle</strong></div>
+              <div class="security-pill"><span class="detail-label">Progress</span><strong id="mobileBuildProgressText">0%</strong></div>
+              <div class="security-pill"><span class="detail-label">Current Version</span><strong id="mobileBuildVersionLabel">-</strong></div>
+              <div class="security-pill"><span class="detail-label">Latest APK</span><strong id="mobileBuildArtifactLabel">-</strong></div>
+            </div>
+            <div class="update-progress-card">
+              <label for="mobileBuildProgressBar">Build progress</label>
+              <progress id="mobileBuildProgressBar" max="100" value="0"></progress>
+              <p id="mobileBuildErrorLabel" class="subtle">Builds are queued and processed one at a time.</p>
+            </div>
+            <div class="viewer-history">
+              <table class="data-table">
+                <thead><tr><th>Version</th><th>Status</th><th>Progress</th><th>Created</th><th>APK</th><th>Action</th></tr></thead>
+                <tbody id="mobileBuildHistoryTable"></tbody>
+              </table>
+            </div>
+            <section class="card section-card">
+              <div class="pane-header">
+                <div>
+                  <h3>APK Management</h3>
+                  <p>Upload published Android packages and choose which version mobile users should receive.</p>
+                </div>
+              </div>
+              <div class="metadata-grid">
+                <article class="metadata-card">
+                  <div class="field"><label for="apkVersionInput">APK Version</label><input id="apkVersionInput" type="text" placeholder="0.2.0"></div>
+                  <div class="field"><label for="apkFileInput">APK File</label><input id="apkFileInput" type="file" accept=".apk,application/vnd.android.package-archive"></div>
+                  <label class="toggle"><input id="apkForceUpdateInput" type="checkbox"><span>Force update users on latest release</span></label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="uploadApkButton" type="button">Upload APK</button>
+                  </div>
+                </article>
+                <article class="metadata-card">
+                  <div class="security-pill"><span class="detail-label">Latest Version</span><strong id="latestApkVersionLabel">-</strong></div>
+                  <div class="security-pill"><span class="detail-label">Download Path</span><strong id="latestApkPathLabel">-</strong></div>
+                  <div class="security-pill"><span class="detail-label">Force Update</span><strong id="latestApkForceLabel">No</strong></div>
+                </article>
+              </div>
+              <div class="viewer-history">
+                <table class="data-table">
+                  <thead><tr><th>Version</th><th>Path</th><th>Uploaded</th><th>Latest</th><th>Action</th></tr></thead>
+                  <tbody id="apkManagementTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </section>
+        <section class="view" data-view="backups">
+          <section class="card section-card">
+            <div class="pane-header"><div><h3>Backups Panel</h3><p>One-click backup, restore, scheduled backups, retention policy, and history.</p></div><div class="topbar-actions"><button class="ghost-button small-button" id="saveBackupSettingsButton">Save Backup Settings</button><button class="ghost-button small-button" id="refreshBackupButton">Refresh Backups</button></div></div>
+            <div class="metadata-grid">
+              <article class="metadata-card"><div class="field"><label for="backupPathInput">Backup Folder</label><input id="backupPathInput" type="text" placeholder="desktop/backups"></div><div class="field"><label for="backupScheduleSelect">Schedule</label><select id="backupScheduleSelect"><option value="disabled">Disabled</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div><div class="field"><label for="backupRetentionInput">Retention</label><input id="backupRetentionInput" type="number" min="1" value="7"></div></article>
+              <article class="metadata-card"><div class="field"><label for="cloudBackupEnabledInput">Cloud Sync</label><select id="cloudBackupEnabledInput"><option value="0">Disabled</option><option value="1">Enabled</option></select></div><div class="field"><label for="s3BucketInput">S3 Bucket</label><input id="s3BucketInput" type="text" placeholder="optional-bucket"></div><div class="field"><label for="s3PrefixInput">S3 Prefix</label><input id="s3PrefixInput" type="text" placeholder="football-iptv-backups"></div></article>
+              <article class="metadata-card"><div class="field"><label for="awsRegionInput">AWS Region</label><input id="awsRegionInput" type="text" placeholder="eu-west-3"></div><div class="field"><label>Runtime</label><div id="backupRuntimeMirror" class="empty-state">Checking runtime...</div></div><div class="field"><label>Latest Run</label><div id="backupLastRunMirror" class="empty-state">No backup run yet.</div></div></article>
+            </div>
+            <div class="backup-grid">
+              <article class="analytics-card"><div class="pane-header compact"><h4>Backup Now</h4><span>Create an immediate protected snapshot</span></div><div class="empty-state">Use the toolbar or File menu to create a one-click backup.</div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Restore Backup</h4><span>Available restore points</span></div><div id="backupList" class="list medium-list"></div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Scheduled Backup</h4><span>Automation and retention</span></div><div class="empty-state">Adjust backup folder, schedule, retention, and cloud sync above.</div></article>
+              <article class="analytics-card"><div class="pane-header compact"><h4>Backup History</h4><span>Manual and automatic runs</span></div><div id="backupLogListDuplicate" class="list medium-list"></div></article>
+            </div>
+          </section>
+        </section>
+      </main>
+      <footer class="app-footer">
+        <span>Desktop Version: <strong id="footerDesktopVersion">0.0.0</strong></span>
+      </footer>
+    </div>
+  </div>
+  <div class="modal hidden" id="providerModal">
+    <div class="modal-card large">
+      <div class="modal-header"><div><p class="eyebrow">Provider Manager</p><h2>IPTV Credentials</h2></div><button class="icon-button" id="closeProviderModalButton">x</button></div>
+      <div class="provider-modal-layout">
+        <aside class="provider-sidebar">
+          <div class="provider-sidebar-header"><h3>Saved Providers</h3><button class="ghost-button" id="newProviderButton">New Provider</button></div>
+          <div id="providerList" class="provider-list"></div>
+        </aside>
+        <section class="provider-form-panel">
+          <form id="providerForm">
+            <input type="hidden" id="providerIdInput">
+            <div class="form-grid">
+              <div class="field"><label for="providerNameInput">Provider Name</label><input id="providerNameInput" type="text" required></div>
+              <div class="field"><label for="providerTypeSelect">Provider Type</label><select id="providerTypeSelect"><option value="xtream">Xtream Codes</option><option value="m3u">M3U Playlist</option></select></div>
+              <div class="field full-width xtream-only"><label for="xtreamServerUrlInput">Xtream Server URL</label><input id="xtreamServerUrlInput" type="text"></div>
+              <div class="field xtream-only"><label for="xtreamUsernameInput">Xtream Username</label><input id="xtreamUsernameInput" type="text"></div>
+              <div class="field xtream-only"><label for="xtreamPasswordInput">Xtream Password</label><input id="xtreamPasswordInput" type="password"></div>
+              <div class="field full-width m3u-only hidden"><label for="m3uPlaylistUrlInput">M3U Playlist URL</label><input id="m3uPlaylistUrlInput" type="text"></div>
+              <div class="field"><label for="cacheTtlInput">Cache TTL</label><input id="cacheTtlInput" type="number" min="30" value="300"></div>
+              <label class="toggle"><input id="providerActiveCheckbox" type="checkbox"><span>Make active provider</span></label>
+            </div>
+            <div class="form-actions"><button type="button" class="ghost-button" id="deleteProviderButton">Delete</button><button type="submit" class="primary-button">Save Provider</button></div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+  <div class="modal hidden" id="entityModal">
+    <div class="modal-card">
+      <div class="modal-header"><div><p class="eyebrow" id="entityModalEyebrow">Football Metadata</p><h2 id="entityModalTitle">Edit</h2></div><button class="icon-button" id="closeEntityModalButton">x</button></div>
+      <form id="entityForm">
+        <input type="hidden" id="entityIdInput">
+        <input type="hidden" id="entityTypeInput">
+        <div class="field"><label for="entityNameInput">Name</label><input id="entityNameInput" type="text" required></div>
+        <div class="field hidden" id="entityNationField"><label for="entityNationSelect">Nation</label><select id="entityNationSelect"></select></div>
+        <div class="field hidden" id="entityCompetitionTypeField"><label for="entityCompetitionTypeSelect">Competition Type</label><select id="entityCompetitionTypeSelect"><option value="league">League</option><option value="cup">Cup</option></select></div>
+        <div class="field hidden" id="entityClubCompetitionField"><label for="entityClubCompetitionSelect">Default Competition</label><select id="entityClubCompetitionSelect"></select></div>
+        <div class="field"><label for="entityLogoFileInput">Logo Upload</label><input id="entityLogoFileInput" type="file" accept="image/*"></div>
+        <div id="entityLogoPreview" class="asset-preview hidden"></div>
+        <div class="form-actions"><button type="button" class="ghost-button" id="deleteEntityButton">Delete</button><button type="submit" class="primary-button">Save</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="update-overlay hidden" id="updateOverlay">
+    <div class="update-overlay-card">
+      <p class="eyebrow">Desktop Updates</p>
+      <h2>Platform Update Required</h2>
+      <p>This desktop can block the dashboard when a mandatory platform release is published.</p>
+      <div class="form-actions">
+        <button class="primary-button" id="updatePrimaryButton">Update Now</button>
+        <button class="ghost-button" id="updateSecondaryButton">Remind Later</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+  <script src="../node_modules/hls.js/dist/hls.min.js"></script>
+  <script src="../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>

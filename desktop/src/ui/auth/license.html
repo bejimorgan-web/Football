@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Desktop License</title>
+  <link rel="stylesheet" href="./auth.css">
+</head>
+<body>
+  <section class="auth-shell">
+    <p class="eyebrow">Desktop Licensing</p>
+    <h1>Activate This Device</h1>
+    <p>Bind this desktop installation to a license before opening the IPTV operations dashboard.</p>
+    <form id="licenseForm">
+      <label>Assigned License Key<input id="licenseKeyInput" type="text" required></label>
+      <button class="primary-button" type="submit">Activate License</button>
+    </form>
+    <div class="status" id="statusLabel"></div>
+    <div class="note" id="detailsLabel"></div>
+    <div class="link-row">
+      <a href="./login.html">Back to login</a>
+      <a id="renewLink" href="#" target="_blank" rel="noreferrer">Renew subscription</a>
+    </div>
+  </section>
+  <script>
+    const statusLabel = document.getElementById("statusLabel");
+    const detailsLabel = document.getElementById("detailsLabel");
+    const licenseKeyInput = document.getElementById("licenseKeyInput");
+    const renewLink = document.getElementById("renewLink");
+
+    async function hydrate() {
+      const auth = await window.desktopApi.getAuthStatus();
+      const payload = await window.desktopApi.getLicenseStatus();
+      const session = payload.session || {};
+      const remote = payload.remoteLicense || {};
+      const validation = payload.validation || {};
+      licenseKeyInput.value = session.licenseKey || remote.license_key || "";
+      renewLink.href = `${auth.backendUrl}/admin/ui`;
+      const lines = [
+        `Device: ${auth.deviceId || "-"}`,
+        `Plan: ${session.licensePlan || remote.subscription_plan || "-"}`,
+        `Expires: ${session.licenseExpiresAt || remote.expires_at || "-"}`,
+      ];
+      detailsLabel.textContent = lines.join(" | ");
+      if (!validation.valid && validation.reason) {
+        statusLabel.textContent = validation.reason;
+      } else if (validation.valid) {
+        statusLabel.textContent = "License is valid for this device.";
+      }
+    }
+
+    document.getElementById("licenseForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusLabel.textContent = "";
+      try {
+        const auth = await window.desktopApi.getAuthStatus();
+        await window.desktopApi.activateLicense({
+          licenseKey: licenseKeyInput.value.trim(),
+          deviceId: auth.deviceId,
+          appVersion: "0.1.0",
+        });
+      } catch (error) {
+        statusLabel.textContent = error.message;
+      }
+    });
+
+    hydrate().catch((error) => {
+      statusLabel.textContent = error.message;
+    });
+  </script>
+</body>
+</html>

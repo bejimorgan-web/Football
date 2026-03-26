@@ -1,0 +1,24 @@
+name: PUBSPEC_NAME
+version: APP_VERSION+APP_VERSION_CODE
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  device_info_plus: ^11.2.2
+  http: ^1.2.0
+  video_player: ^2.8.3
+  shared_preferences: ^2.2.3
+  google_mobile_ads: ^5.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/branding/
