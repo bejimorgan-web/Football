@@ -1,0 +1,7 @@
+{
+  "xtream_server_url": null,
+  "xtream_username": null,
+  "xtream_password": null,
+  "m3u_playlist_url": "https://iptv-org.github.io/iptv/countries/us.m3u",
+  "cache_ttl_seconds": 300
+}

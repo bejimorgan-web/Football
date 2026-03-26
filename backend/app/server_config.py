@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict
 
@@ -28,8 +29,20 @@ def load_server_config() -> Dict[str, str]:
         except Exception:
             payload = {}
 
-    public_url = _normalize_url(str(payload.get("public_url") or ""), DEFAULT_API_URL)
-    local_url = _normalize_url(str(payload.get("local_url") or ""), "http://127.0.0.1:8000")
+    public_url = _normalize_url(
+        os.getenv("PUBLIC_SERVER_URL")
+        or os.getenv("API_BASE_URL")
+        or os.getenv("DEFAULT_API_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or str(payload.get("public_url") or ""),
+        DEFAULT_API_URL,
+    )
+    local_url = _normalize_url(
+        os.getenv("LOCAL_SERVER_URL")
+        or os.getenv("INTERNAL_SERVER_URL")
+        or str(payload.get("local_url") or ""),
+        "http://127.0.0.1:8000",
+    )
     return {
         "public_url": public_url,
         "local_url": local_url,

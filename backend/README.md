@@ -203,6 +203,18 @@ FastAPI backend for IPTV ingestion, football metadata management, approved strea
   - `backend_url_source=default_ngrok`
   - `backend_url_notice`
 
+## Render Deployment
+
+- The backend resolver now supports dynamic deployment URLs from environment variables.
+- Supported environment variables:
+  - `PUBLIC_SERVER_URL`
+  - `API_BASE_URL`
+  - `DEFAULT_API_URL`
+  - `RENDER_EXTERNAL_URL`
+  - `LOCAL_SERVER_URL`
+- On Render, `RENDER_EXTERNAL_URL` can be used automatically as the public resolver base URL.
+- `GET /api/config` now returns the runtime public backend URL instead of requiring a hardcoded domain in source code.
+
 ## Roles And RBAC
 
 - Admin accounts now carry a `role` field:

@@ -1,0 +1,86 @@
+[
+  {
+    "session_id": "81e49a0a1b084cf0b95913f0f57bfe4f",
+    "tenant_id": "master",
+    "device_id": "device-19d2688b561-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-25T19:48:04.117814+00:00",
+    "expires_at": "2026-03-25T19:49:04.117814+00:00",
+    "status": "active"
+  },
+  {
+    "session_id": "01c8d33077ac428aa2ed41aebf0c56d1",
+    "tenant_id": "master",
+    "device_id": "device-19d26adcab7-0",
+    "stream_id": "FilmRiseAnime.us@SD",
+    "created_at": "2026-03-25T20:30:37.181297+00:00",
+    "expires_at": "2026-03-25T20:31:37.181297+00:00",
+    "status": "terminated",
+    "terminated_at": "2026-03-25T20:36:21.904372+00:00"
+  },
+  {
+    "session_id": "7345aec50de449e7825b4045924d2a1a",
+    "tenant_id": "master",
+    "device_id": "device-19d26adcab7-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-25T20:36:21.904372+00:00",
+    "expires_at": "2026-03-25T20:37:21.904372+00:00",
+    "status": "active"
+  },
+  {
+    "session_id": "b4948078d96b418b9e59ded864927738",
+    "tenant_id": "master",
+    "device_id": "device-19d26df743c-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-25T21:37:51.249362+00:00",
+    "expires_at": "2026-03-25T21:38:51.249362+00:00",
+    "status": "active"
+  },
+  {
+    "session_id": "0157df9bcf8341f2920ef57e34b3825b",
+    "tenant_id": "master",
+    "device_id": "device-19d274eb407-0",
+    "stream_id": "FilmRiseAnime.us@SD",
+    "created_at": "2026-03-25T23:23:52.401999+00:00",
+    "expires_at": "2026-03-25T23:24:52.401999+00:00",
+    "status": "terminated",
+    "terminated_at": "2026-03-25T23:40:27.803098+00:00"
+  },
+  {
+    "session_id": "d7bb7d30a51f4eebb01847c45cb1cb55",
+    "tenant_id": "master",
+    "device_id": "device-19d274eb407-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-25T23:40:27.803098+00:00",
+    "expires_at": "2026-03-25T23:41:27.803098+00:00",
+    "status": "terminated",
+    "terminated_at": "2026-03-25T23:46:35.453539+00:00"
+  },
+  {
+    "session_id": "8c3c55adf90746d58d7212a997a51f93",
+    "tenant_id": "master",
+    "device_id": "device-19d274eb407-0",
+    "stream_id": "OnePiece.us@SD",
+    "created_at": "2026-03-25T23:46:35.453539+00:00",
+    "expires_at": "2026-03-25T23:47:35.453539+00:00",
+    "status": "active"
+  },
+  {
+    "session_id": "d524e9e38cb7449097e8e7b8be259975",
+    "tenant_id": "master",
+    "device_id": "device-19d278b47f0-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-26T00:44:10.700768+00:00",
+    "expires_at": "2026-03-26T00:45:10.700768+00:00",
+    "status": "active"
+  },
+  {
+    "session_id": "909ff5ea6b3b4350bc2e91704622ff4b",
+    "tenant_id": "master",
+    "device_id": "device-19d293f9c46-0",
+    "stream_id": "KMBYLD5.us@SD",
+    "created_at": "2026-03-26T09:54:07.245243+00:00",
+    "expires_at": "2026-03-26T09:55:07.245243+00:00",
+    "status": "active"
+  }
+]

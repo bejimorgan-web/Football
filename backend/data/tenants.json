@@ -1,0 +1,517 @@
+[
+  {
+    "tenant_id": "default",
+    "name": "Football Streaming",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "updated_at": "2026-03-23T09:03:35.856074+00:00",
+    "created_at": "2026-03-23T09:03:35.856074+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "clubtv",
+    "name": "Club TV",
+    "branding": {
+      "app_name": "Club TV",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "club-admin",
+      "password": "secret"
+    },
+    "created_at": "2026-03-23T09:03:35.855618+00:00",
+    "updated_at": "2026-03-23T09:03:35.855638+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "morgan-molebi-19f9d4",
+    "name": "morgan molebi",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T15:20:21.941989+00:00",
+    "updated_at": "2026-03-23T15:20:21.942066+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "license-test-a64819",
+    "name": "License Test",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T16:43:03.804995+00:00",
+    "updated_at": "2026-03-23T16:43:03.805018+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "license-test-05de5d",
+    "name": "License Test",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T16:43:17.593397+00:00",
+    "updated_at": "2026-03-23T16:43:17.593417+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "master-ops-7a348d",
+    "name": "Master Ops",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T17:11:19.276668+00:00",
+    "updated_at": "2026-03-23T17:11:19.276688+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "client-ops-4eba2e",
+    "name": "Client Ops",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "",
+      "logo_file": "",
+      "icon_url": "",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "",
+      "server_url": "",
+      "splash_screen": "",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ]
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T17:11:19.544522+00:00",
+    "updated_at": "2026-03-23T17:11:19.544542+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  },
+  {
+    "tenant_id": "master",
+    "name": "Beji Morgan",
+    "branding": {
+      "app_name": "Football Streaming",
+      "package_name": "com.footballstreaming.default",
+      "logo_url": "/branding/master/logo.png",
+      "logo_file": "/branding/master/logo.png",
+      "icon_url": "/branding/master/desktop_icon.ico",
+      "primary_color": "#11B37C",
+      "secondary_color": "#7EE3AF",
+      "accent_color": "#7EE3AF",
+      "surface_color": "#0D1E2B",
+      "background_color": "#07141E",
+      "text_color": "#F2F8FF",
+      "api_base_url": "http://127.0.0.1:8000",
+      "server_url": "http://127.0.0.1:8000",
+      "splash_screen": "/branding/master/splash.png",
+      "default_language": "system",
+      "supported_languages": [
+        "en",
+        "fr"
+      ],
+      "favicon_path": "/cdn/branding/master/favicon.ico",
+      "desktop_icon_path": "/branding/master/desktop_icon.ico",
+      "mobile_icon_path": "/branding/master/mobile_icon.png"
+    },
+    "subscription_plans": [
+      {
+        "id": "trial",
+        "name": "3 Day Trial",
+        "duration_days": 3,
+        "price_label": "Free"
+      },
+      {
+        "id": "6_months",
+        "name": "6 Months",
+        "duration_days": 183,
+        "price_label": "Contact Admin"
+      },
+      {
+        "id": "1_year",
+        "name": "12 Months",
+        "duration_days": 365,
+        "price_label": "Contact Admin"
+      }
+    ],
+    "trial_policy": {
+      "enabled": true,
+      "duration_days": 3
+    },
+    "backend_url": "",
+    "admin_credentials": {
+      "username": "",
+      "password": ""
+    },
+    "created_at": "2026-03-23T13:26:15.441993+00:00",
+    "updated_at": "2026-03-26T09:16:56.449567+00:00",
+    "email": "",
+    "subscription_plan": "trial",
+    "license_key": "",
+    "server_ip": "",
+    "status": "active",
+    "mobile_app_generated": false,
+    "mobile_app_package_id": null,
+    "mobile_app_created_at": null
+  }
+]

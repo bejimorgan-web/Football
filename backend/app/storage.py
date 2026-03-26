@@ -799,6 +799,16 @@ def _admin_subscription_delta(plan_id: str) -> timedelta:
     return _SUBSCRIPTION_PLAN_DELTAS.get(normalized, timedelta(days=TRIAL_DAYS))
 
 
+def _apply_master_admin_defaults(admin: Dict[str, object]) -> Dict[str, object]:
+    admin["plan_id"] = "unlimited"
+    admin["trial_days"] = 0
+    admin["subscription_status"] = "active"
+    admin["status"] = "active"
+    admin["subscription_end"] = ""
+    admin["subscription_end_date"] = ""
+    return admin
+
+
 def _decorate_admin(item: Dict[str, object]) -> Dict[str, object]:
     now = utc_now()
     admin = dict(item)
@@ -835,8 +845,11 @@ def _decorate_admin(item: Dict[str, object]) -> Dict[str, object]:
     admin["created_at"] = str(admin.get("created_at") or utc_now_iso())
     admin["updated_at"] = str(admin.get("updated_at") or admin["created_at"])
 
+    is_master = admin["role"] == "master"
     subscription_end = parse_datetime(admin["subscription_end"])
-    if subscription_end and subscription_end < now:
+    if is_master:
+        admin = _apply_master_admin_defaults(admin)
+    elif subscription_end and subscription_end < now:
         admin["subscription_status"] = "expired"
         admin["status"] = "blocked" if admin["status"] == "blocked" else "active"
     elif admin["subscription_status"] not in {"active", "trial", "expired"}:
@@ -1540,11 +1553,12 @@ def register_admin(
         raise ValueError("role must be either master or client.")
 
     tenant_id = MASTER_TENANT_ID if assigned_role == "master" else _slugify(f"{normalized_name}-{uuid4().hex[:6]}")
+    normalized_plan_id = "unlimited" if assigned_role == "master" else (str(plan_id or "trial").strip().lower() or "trial")
     upsert_tenant(
         tenant_id=tenant_id,
         name=normalized_name,
         email=normalized_email,
-        subscription_plan=str(plan_id or "trial").strip().lower() or "trial",
+        subscription_plan=normalized_plan_id,
         status="active",
     )
     now = utc_now()
@@ -1555,17 +1569,17 @@ def register_admin(
             "tenant_id": tenant_id,
             "name": normalized_name,
             "email": normalized_email,
-            "plan_id": str(plan_id or "trial").strip().lower() or "trial",
+            "plan_id": normalized_plan_id,
             "password_salt": salt,
             "password_hash": _hash_secret(password, salt),
             "subscription_started_at": now.isoformat(),
             "subscription_start_date": now.isoformat(),
-            "subscription_end": (now + _admin_subscription_delta(plan_id)).isoformat(),
-            "subscription_end_date": (now + _admin_subscription_delta(plan_id)).isoformat(),
-            "subscription_status": "trial" if str(plan_id or "trial").strip().lower() == "trial" else "active",
+            "subscription_end": "" if assigned_role == "master" else (now + _admin_subscription_delta(plan_id)).isoformat(),
+            "subscription_end_date": "" if assigned_role == "master" else (now + _admin_subscription_delta(plan_id)).isoformat(),
+            "subscription_status": "active" if assigned_role == "master" else ("trial" if str(plan_id or "trial").strip().lower() == "trial" else "active"),
             "status": "active",
             "role": assigned_role,
-            "trial_days": TRIAL_DAYS if str(plan_id or "trial").strip().lower() == "trial" else 0,
+            "trial_days": 0 if assigned_role == "master" else (TRIAL_DAYS if str(plan_id or "trial").strip().lower() == "trial" else 0),
             "device_id": normalized_device_id,
             "device_transfer_available_at": "",
             "server_reset_available_at": "",
@@ -1589,17 +1603,19 @@ def authenticate_admin(email: str, password: str, device_id: str) -> Dict[str, o
     admin = get_admin_by_email(email)
     if admin is None:
         raise ValueError("Invalid email or password.")
+    is_master = _normalize_admin_role(admin.get("role"), default="client") == "master"
     expected = _hash_secret(password, str(admin.get("password_salt") or ""))
     if not secrets.compare_digest(expected, str(admin.get("password_hash") or "")):
         raise ValueError("Invalid email or password.")
-    if str(admin.get("status") or "").strip().lower() == "blocked":
+    if not is_master and str(admin.get("status") or "").strip().lower() == "blocked":
         raise ValueError("This client account is blocked.")
-    if str(admin.get("subscription_status") or "") == "expired":
+    if not is_master and str(admin.get("subscription_status") or "") == "expired":
         raise ValueError("Subscription expired.")
-    validate_tenant_license_access(
-        tenant_id=str(admin.get("tenant_id") or ""),
-        server_ip=str(admin.get("server_ip") or ""),
-    )
+    if not is_master:
+        validate_tenant_license_access(
+            tenant_id=str(admin.get("tenant_id") or ""),
+            server_ip=str(admin.get("server_ip") or ""),
+        )
     normalized_device_id = str(device_id or "").strip()
     if not normalized_device_id:
         raise ValueError("device_id is required.")
@@ -1616,14 +1632,16 @@ def validate_admin_api_token(token: str, *, device_id: str = "", server_id: str 
     admin = _find_admin_by_token(token)
     if admin is None:
         raise ValueError("Invalid admin token.")
-    if str(admin.get("status") or "").strip().lower() == "blocked":
+    is_master = _normalize_admin_role(admin.get("role"), default="client") == "master"
+    if not is_master and str(admin.get("status") or "").strip().lower() == "blocked":
         raise ValueError("This client account is blocked.")
-    if str(admin.get("subscription_status") or "") == "expired":
+    if not is_master and str(admin.get("subscription_status") or "") == "expired":
         raise ValueError("Subscription expired.")
-    validate_tenant_license_access(
-        tenant_id=str(admin.get("tenant_id") or ""),
-        server_ip=str(admin.get("server_ip") or ""),
-    )
+    if not is_master:
+        validate_tenant_license_access(
+            tenant_id=str(admin.get("tenant_id") or ""),
+            server_ip=str(admin.get("server_ip") or ""),
+        )
     normalized_device_id = str(device_id or "").strip()
     normalized_server_id = str(server_id or "").strip()
     if admin.get("device_id") and normalized_device_id != str(admin.get("device_id")):

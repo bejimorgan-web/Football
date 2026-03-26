@@ -1,0 +1,46 @@
+[
+  {
+    "id": "1c3ef7f5d3024bcdbead9c080088c16b",
+    "type": "subscription_reminder",
+    "timestamp": "2026-03-25T08:00:00.127031+00:00",
+    "admin_id": "76395055a40c45f096e846f8d52a4820",
+    "tenant_id": "master",
+    "email": "bejimorgan@gmail.com",
+    "subject": "Beji Morgan subscription renewal reminder",
+    "status": "logged-only",
+    "detail": "Reminder processed at 2026-03-25T08:00:00.126980+00:00."
+  },
+  {
+    "id": "e82d889c71524dbc9a5abf30310875f2",
+    "type": "subscription_reminder",
+    "timestamp": "2026-03-25T08:00:00.137491+00:00",
+    "admin_id": "bd83efcd234f4f4a9d247f92f294d936",
+    "tenant_id": "client-ops-4eba2e",
+    "email": "client-fe8a10@example.com",
+    "subject": "Client Ops subscription renewal reminder",
+    "status": "logged-only",
+    "detail": "Reminder processed at 2026-03-25T08:00:00.137461+00:00."
+  },
+  {
+    "id": "4e8eed0e87e646748f2335cff55a676a",
+    "type": "subscription_reminder",
+    "timestamp": "2026-03-25T08:00:00.141420+00:00",
+    "admin_id": "8f35876081e0418181249d41aeb9133d",
+    "tenant_id": "master-ops-7a348d",
+    "email": "master-2a5ef0@example.com",
+    "subject": "Master Ops subscription renewal reminder",
+    "status": "logged-only",
+    "detail": "Reminder processed at 2026-03-25T08:00:00.141374+00:00."
+  },
+  {
+    "id": "ed494434056342b8bfb6dcfc9e0e3584",
+    "type": "subscription_reminder",
+    "timestamp": "2026-03-25T08:00:00.144726+00:00",
+    "admin_id": "ad35a9d7cfac486db275db981068c6d1",
+    "tenant_id": "morgan-molebi-19f9d4",
+    "email": "morganmolebi@gmail.com",
+    "subject": "morgan molebi subscription renewal reminder",
+    "status": "logged-only",
+    "detail": "Reminder processed at 2026-03-25T08:00:00.144696+00:00."
+  }
+]

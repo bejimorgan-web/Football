@@ -24,6 +24,16 @@ def normalize_api_base_url(value: str) -> str:
     return normalized or load_server_config()["local_url"] or DEFAULT_API_URL
 
 
+def get_runtime_public_api_url() -> str:
+    server_config = load_server_config()
+    return normalize_api_base_url(server_config["public_url"] or DEFAULT_API_URL)
+
+
+def get_runtime_backend_api_url() -> str:
+    server_config = load_server_config()
+    return normalize_api_base_url(server_config["local_url"] or server_config["public_url"] or DEFAULT_API_URL)
+
+
 def _normalize_endpoint_config(payload: object, *, fallback_url: str) -> Dict[str, object]:
     item = payload if isinstance(payload, dict) else {}
     raw_url = str(item.get("url") or fallback_url or "").strip()
@@ -37,8 +47,8 @@ def _normalize_endpoint_config(payload: object, *, fallback_url: str) -> Dict[st
 def ensure_api_config_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not API_CONFIG_PATH.exists():
-        default_public_url = normalize_api_base_url(load_server_config()["local_url"] or DEFAULT_API_URL)
-        default_backend_url = normalize_api_base_url(load_server_config()["local_url"] or DEFAULT_API_URL)
+        default_public_url = get_runtime_public_api_url()
+        default_backend_url = get_runtime_backend_api_url()
         API_CONFIG_PATH.write_text(
             json.dumps(
                 {
@@ -71,14 +81,18 @@ def load_api_config() -> Dict[str, object]:
         payload = {}
     server_config = load_server_config()
     legacy_public_url = str(payload.get("apiBaseUrl") or "").strip()
-    default_backend_url = normalize_api_base_url(server_config["local_url"] or DEFAULT_API_URL)
+    default_public_url = get_runtime_public_api_url()
+    default_backend_url = get_runtime_backend_api_url()
     raw_backend_api = payload.get("backend_api") or payload.get("backendApi")
     raw_public_api = payload.get("public_api") or payload.get("publicApi")
     backend_api = _normalize_endpoint_config(raw_backend_api, fallback_url=default_backend_url if raw_backend_api is None else "")
-    public_api = _normalize_endpoint_config(raw_public_api, fallback_url=legacy_public_url if raw_public_api is None else "")
-    api_base_url = str(payload.get("apiBaseUrl") or public_api["url"] or "").strip()
+    public_api = _normalize_endpoint_config(
+        raw_public_api,
+        fallback_url=(legacy_public_url or default_public_url) if raw_public_api is None else "",
+    )
+    api_base_url = str(payload.get("apiBaseUrl") or public_api["url"] or default_public_url).strip()
     return {
-        "apiBaseUrl": normalize_api_base_url(api_base_url) if api_base_url else "",
+        "apiBaseUrl": normalize_api_base_url(api_base_url) if api_base_url else default_public_url,
         "backend_api": backend_api,
         "public_api": public_api,
         "updatedAt": str(payload.get("updatedAt") or ""),

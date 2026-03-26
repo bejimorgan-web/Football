@@ -8,7 +8,12 @@ from fastapi.requests import Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.api_config import build_public_api_config, ensure_api_config_storage, save_api_config
+from app.api_config import (
+    build_public_api_config,
+    ensure_api_config_storage,
+    get_runtime_public_api_url,
+    save_api_config,
+)
 from app.auth import require_role
 from app.backup import ensure_backup_storage, start_backup_scheduler, stop_backup_scheduler
 from app.branding_engine import BRANDING_CDN_ROOT, BRANDING_STORAGE_ROOT, ensure_branding_storage
@@ -175,35 +180,35 @@ class PublicApiConfigPayload(BaseModel):
 
 @app.get("/api/config")
 def api_config():
-    localhost_api = "http://localhost:8000" if is_development_mode() else str(build_public_api_config().get("apiBaseUrl") or "http://127.0.0.1:8000")
     payload = build_public_api_config()
+    public_api_url = "http://localhost:8000" if is_development_mode() else str(payload.get("apiBaseUrl") or get_runtime_public_api_url())
     payload.update({
-        "backend_url": localhost_api,
+        "backend_url": public_api_url,
         "tenant_id": "master",
         "auth_required": False,
-        "apiBaseUrl": localhost_api,
-        "publicApiUrl": localhost_api,
-        "public_api_url": localhost_api,
+        "apiBaseUrl": public_api_url,
+        "publicApiUrl": public_api_url,
+        "public_api_url": public_api_url,
         "backend_api": {
-            "url": localhost_api,
+            "url": public_api_url,
             "api_token": "",
             "connected": False,
             "token": "",
         },
         "public_api": {
-            "url": localhost_api,
+            "url": public_api_url,
             "api_token": "",
             "connected": False,
             "token": "",
         },
         "backendApi": {
-            "url": localhost_api,
+            "url": public_api_url,
             "apiToken": "",
             "connected": False,
             "token": "",
         },
         "publicApi": {
-            "url": localhost_api,
+            "url": public_api_url,
             "apiToken": "",
             "connected": False,
             "token": "",

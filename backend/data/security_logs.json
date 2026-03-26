@@ -1,0 +1,26 @@
+[
+  {
+    "id": "c4f824f9e08043aead09b0985913af6f",
+    "device_id": "device-19d26adcab7-0",
+    "tenant_id": "master",
+    "issue": "concurrent_stream_replaced",
+    "detail": "Older session for stream FilmRiseAnime.us@SD was terminated by a newer request.",
+    "timestamp": "2026-03-25T20:36:21.904996+00:00"
+  },
+  {
+    "id": "6290cfacea234dba934013e76d477c01",
+    "device_id": "device-19d274eb407-0",
+    "tenant_id": "master",
+    "issue": "concurrent_stream_replaced",
+    "detail": "Older session for stream FilmRiseAnime.us@SD was terminated by a newer request.",
+    "timestamp": "2026-03-25T23:40:27.804469+00:00"
+  },
+  {
+    "id": "4756a2fe48bf49ec8ec9c72c8c7f976f",
+    "device_id": "device-19d274eb407-0",
+    "tenant_id": "master",
+    "issue": "concurrent_stream_replaced",
+    "detail": "Older session for stream KMBYLD5.us@SD was terminated by a newer request.",
+    "timestamp": "2026-03-25T23:46:35.454227+00:00"
+  }
+]
