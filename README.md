@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Football Streaming App
 
 End-to-end football IPTV platform with three coordinated applications:
@@ -384,3 +385,7 @@ flutter run
 7. Approve provider streams into football matches.
 8. Launch the Flutter app on a device or emulator.
 9. The mobile app will register the device, check access, and then open the football match catalog.
+=======
+# Football
+program control
+>>>>>>> 0909803ac94de790e61d4db94d1814eb2ddd73d6
