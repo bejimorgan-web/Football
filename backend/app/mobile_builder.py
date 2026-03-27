@@ -23,7 +23,6 @@ from app.storage import (
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_ROOT.parent
-MOBILE_TEMPLATE_DIR = PROJECT_ROOT / "mobile-template"
 PRIMARY_MOBILE_PROJECT_DIR = PROJECT_ROOT / "mobile"
 GENERATED_APPS_DIR = BACKEND_ROOT / "generated_apps"
 BUILD_QUEUE_DIR = BACKEND_ROOT / "build_queue"
@@ -70,9 +69,17 @@ def ensure_mobile_builder_storage() -> None:
         _write_json(BUILD_QUEUE_JOBS_PATH, [])
 
 
+def _read_build_log(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
 def start_mobile_build_worker() -> None:
     global WORKER_THREAD
     ensure_mobile_builder_storage()
+    _recover_interrupted_jobs()
     if WORKER_THREAD and WORKER_THREAD.is_alive():
         return
     WORKER_STOP_EVENT.clear()
@@ -119,6 +126,44 @@ def _load_jobs() -> List[Dict[str, object]]:
 
 def _save_jobs(jobs: List[Dict[str, object]]) -> None:
     _write_json(BUILD_QUEUE_JOBS_PATH, jobs)
+
+
+def _recover_interrupted_jobs() -> None:
+    recovered: List[Dict[str, object]] = []
+    with JOB_LOCK:
+        jobs = _load_jobs()
+        changed = False
+        now = utc_now_iso()
+        for item in jobs:
+            status = str(item.get("status") or "").strip().lower()
+            if status == "building":
+                item.update(
+                    {
+                        "status": "failed",
+                        "progress": 0,
+                        "error": str(item.get("error") or "Build interrupted before completion."),
+                        "updated_at": now,
+                        "completed_at": now,
+                    }
+                )
+                recovered.append(dict(item))
+                changed = True
+            elif status == "cancelling":
+                item.update(
+                    {
+                        "status": "cancelled",
+                        "progress": 0,
+                        "error": str(item.get("error") or "Build cancelled while the worker was offline."),
+                        "updated_at": now,
+                        "completed_at": now,
+                    }
+                )
+                recovered.append(dict(item))
+                changed = True
+        if changed:
+            _save_jobs(jobs)
+    for item in recovered:
+        _sync_version_history_entry(item)
 
 
 def _update_job(build_id: str, patch: Dict[str, object]) -> Dict[str, object]:
@@ -384,8 +429,8 @@ def queue_mobile_build(admin_id: str) -> Dict[str, object]:
     ensure_mobile_builder_storage()
     if _builds_today(admin_id) >= MAX_BUILDS_PER_DAY:
         raise ValueError("Daily build limit reached. Maximum 5 builds per day.")
-    if not MOBILE_TEMPLATE_DIR.exists():
-        raise ValueError("mobile-template directory is missing.")
+    if not PRIMARY_MOBILE_PROJECT_DIR.exists():
+        raise ValueError("mobile directory is missing.")
     tenant_state = _tenant_mobile_app_state(admin_id)
     if tenant_state["mobile_app_generated"]:
         raise ValueError("Mobile application already generated for this tenant.")
@@ -462,6 +507,7 @@ def get_build_download_path(admin_id: str, build_id: str) -> Path:
 def get_build_status(admin_id: str, build_id: str) -> Dict[str, object]:
     job = get_build(admin_id, build_id)
     tenant_state = _tenant_mobile_app_state(admin_id)
+    log_path = Path(str(job.get("log_path") or BUILD_LOGS_DIR / f"{build_id}.log"))
     return {
         "build_id": build_id,
         "status": str(job.get("status") or "queued"),
@@ -471,6 +517,8 @@ def get_build_status(admin_id: str, build_id: str) -> Dict[str, object]:
         "artifact_name": str(job.get("artifact_name") or ""),
         "created_at": str(job.get("created_at") or ""),
         "updated_at": str(job.get("updated_at") or ""),
+        "log_path": str(log_path),
+        "logs": _read_build_log(log_path),
         "mobile_app_generated": bool(tenant_state.get("mobile_app_generated")),
         "mobile_app_package_id": str(tenant_state.get("mobile_app_package_id") or ""),
         "mobile_app_created_at": str(tenant_state.get("mobile_app_created_at") or ""),
@@ -520,22 +568,40 @@ def _process_job(job: Dict[str, object]) -> None:
     build_id = str(job.get("build_id") or "")
     admin_id = str(job.get("admin_id") or "")
     log_path = BUILD_LOGS_DIR / f"{build_id}.log"
-    workspace_dir = BUILD_WORKSPACES_DIR / build_id
+    project_dir = PRIMARY_MOBILE_PROJECT_DIR
+    staged_files: Optional[Dict[Path, Optional[bytes]]] = None
     try:
         _update_job(build_id, {"status": "building", "progress": 15, "updated_at": utc_now_iso(), "error": ""})
         _log(log_path, f"Starting build {build_id} for admin {admin_id}")
-        if workspace_dir.exists():
-            shutil.rmtree(workspace_dir)
-        shutil.copytree(MOBILE_TEMPLATE_DIR, workspace_dir)
+        _log(log_path, f"Working directory: {project_dir}")
+        _log(log_path, f"Flutter executable: {_resolve_flutter_executable()}")
+        if not project_dir.exists():
+            raise RuntimeError(f"Mobile project directory not found: {project_dir}")
+        branding = _resolve_branding(admin_id)
+        staged_files = _stage_mobile_project(project_dir, branding, str(job.get("version") or "1.0.0"), log_path)
         _update_job(build_id, {"progress": 30, "updated_at": utc_now_iso()})
-        _inject_mobile_template(workspace_dir, _resolve_branding(admin_id), str(job.get("version") or "1.0"), log_path)
+        _run_flutter_command(
+            build_id,
+            ["flutter", "pub", "get"],
+            project_dir,
+            log_path,
+        )
         _update_job(build_id, {"progress": 45, "updated_at": utc_now_iso()})
-        _run_flutter_command(build_id, ["flutter", "clean"], workspace_dir, log_path)
-        _update_job(build_id, {"progress": 60, "updated_at": utc_now_iso()})
-        _run_flutter_command(build_id, ["flutter", "pub", "get"], workspace_dir, log_path)
-        _update_job(build_id, {"progress": 80, "updated_at": utc_now_iso()})
-        _run_flutter_command(build_id, ["flutter", "build", "apk", "--release"], workspace_dir, log_path)
-        source_apk = workspace_dir / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
+        _run_flutter_command(
+            build_id,
+            ["flutter", "clean"],
+            project_dir,
+            log_path,
+        )
+        _update_job(build_id, {"progress": 65, "updated_at": utc_now_iso()})
+        _run_flutter_command(
+            build_id,
+            ["flutter", "build", "apk", "--release"],
+            project_dir,
+            log_path,
+        )
+        _update_job(build_id, {"progress": 90, "updated_at": utc_now_iso()})
+        source_apk = project_dir / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
         if not source_apk.exists():
             raise RuntimeError("Flutter build completed but app-release.apk was not found.")
         tenant_dir = GENERATED_APPS_DIR / admin_id
@@ -564,7 +630,7 @@ def _process_job(job: Dict[str, object]) -> None:
             tenant_id=str(job.get("tenant_id") or ""),
             package_id=str(job.get("package_name") or ""),
             app_name=str(job.get("app_name") or ""),
-            logo_url=str(job.get("logo_file") or ""),
+            logo_url=str(branding.get("logo_file") or ""),
             theme_color=str(job.get("primary_color") or ""),
             generated_at=utc_now_iso(),
             artifact_name=artifact_name,
@@ -577,49 +643,55 @@ def _process_job(job: Dict[str, object]) -> None:
     except Exception as exc:
         _clear_build_state(build_id, status="failed", error=str(exc))
         _log(log_path, f"Build failed: {exc}")
+    finally:
+        if staged_files is not None:
+            _restore_staged_files(staged_files, log_path)
 
 
-def _inject_mobile_template(workspace_dir: Path, branding: Dict[str, object], version: str, log_path: Path) -> None:
-    replacements = {
-        "APP_NAME": str(branding["app_name"]),
-        "PACKAGE_NAME": str(branding["package_name"]),
-        "SERVER_URL": str(branding["server_url"]),
-        "TENANT_ID": str(branding["tenant_id"]),
-        "PRIMARY_COLOR": str(branding["primary_color"]),
-        "SECONDARY_COLOR": str(branding["secondary_color"]),
-        "LOGO_PATH": str(branding["logo_file"]),
-        "APP_VERSION": version,
-        "APP_VERSION_CODE": str(_version_code(version)),
-        "PUBSPEC_NAME": str(branding["pubspec_name"]),
-    }
-    text_files = [
-        workspace_dir / "lib" / "config" / "app_config.dart",
-        workspace_dir / "lib" / "config" / "backend.dart",
-        workspace_dir / "lib" / "config" / "backend_web_stub.dart",
-        workspace_dir / "lib" / "main.dart",
-        workspace_dir / "pubspec.yaml",
-        workspace_dir / "android" / "app" / "build.gradle.kts",
-        workspace_dir / "android" / "app" / "src" / "main" / "AndroidManifest.xml",
-        workspace_dir / "android" / "app" / "src" / "main" / "kotlin" / "com" / "example" / "mobile_new" / "MainActivity.kt",
-        workspace_dir / "android" / "app" / "src" / "main" / "res" / "drawable" / "launch_background.xml",
+def _stage_mobile_project(project_dir: Path, branding: Dict[str, object], version: str, log_path: Path) -> Dict[Path, Optional[bytes]]:
+    version_code = str(_version_code(version))
+    package_name = str(branding["package_name"])
+    app_name = str(branding["app_name"])
+    android_root = project_dir / "android" / "app" / "src" / "main"
+    manifest_path = android_root / "AndroidManifest.xml"
+    strings_path = android_root / "res" / "values" / "strings.xml"
+    pubspec_path = project_dir / "pubspec.yaml"
+    build_gradle_path = project_dir / "android" / "app" / "build.gradle.kts"
+    tenant_config_path = project_dir / "lib" / "config" / "tenant_config.dart"
+    local_properties = project_dir / "android" / "local.properties"
+    kotlin_root = android_root / "kotlin"
+    source_activity = next(kotlin_root.rglob("MainActivity.kt"), None)
+    if source_activity is None:
+        raise RuntimeError("MainActivity.kt not found in mobile Android sources.")
+    target_activity = kotlin_root / Path(*package_name.split(".")) / "MainActivity.kt"
+
+    touched: List[Path] = [
+        manifest_path,
+        strings_path,
+        pubspec_path,
+        build_gradle_path,
+        tenant_config_path,
+        local_properties,
+        source_activity,
+        target_activity,
     ]
-    for path in text_files:
-        content = path.read_text(encoding="utf-8")
-        for key in sorted(replacements, key=len, reverse=True):
-            value = replacements[key]
-            content = content.replace(key, value)
-        path.write_text(content, encoding="utf-8")
+    touched.extend(project_dir.glob("android/app/src/main/res/mipmap-*/ic_launcher.png"))
+    touched.extend(
+        [
+            project_dir / "assets" / "branding" / "logo.png",
+            project_dir / "assets" / "branding" / "app_icon.png",
+            project_dir / "assets" / "branding" / "splash.png",
+        ]
+    )
+    snapshots = _snapshot_files(touched)
 
-    kotlin_root = workspace_dir / "android" / "app" / "src" / "main" / "kotlin"
-    desired_kotlin_dir = kotlin_root / Path(*str(branding["package_name"]).split("."))
-    desired_kotlin_dir.mkdir(parents=True, exist_ok=True)
-    source_activity = kotlin_root / "com" / "example" / "mobile_new" / "MainActivity.kt"
-    target_activity = desired_kotlin_dir / "MainActivity.kt"
-    shutil.copy2(source_activity, target_activity)
-    if source_activity.resolve() != target_activity.resolve():
-        shutil.rmtree(kotlin_root / "com" / "example" / "mobile_new", ignore_errors=True)
+    _write_android_manifest(manifest_path, log_path)
+    _write_strings_xml(strings_path, app_name, log_path)
+    _write_build_gradle(build_gradle_path, package_name, version, version_code, log_path)
+    _write_tenant_config(tenant_config_path, branding, log_path)
+    _write_pubspec_assets(pubspec_path, log_path)
+    _write_main_activity_package(source_activity, target_activity, package_name, log_path)
 
-    local_properties = workspace_dir / "android" / "local.properties"
     flutter_root = _resolve_flutter_root()
     android_sdk_dir = _resolve_android_sdk_dir()
     properties_lines = [f"flutter.sdk={flutter_root.replace(chr(92), chr(47))}"]
@@ -629,8 +701,128 @@ def _inject_mobile_template(workspace_dir: Path, branding: Dict[str, object], ve
     local_properties.write_text("\n".join(properties_lines) + "\n", encoding="utf-8")
     _log(log_path, f"Configured flutter.sdk from {flutter_root}")
 
-    _copy_branding_assets(workspace_dir, branding, log_path)
-    _replace_launcher_icons(workspace_dir, str(branding.get("tenant_id") or ""), str(branding.get("logo_file") or ""), log_path)
+    _copy_branding_assets(project_dir, branding, log_path)
+    _replace_launcher_icons(project_dir, str(branding.get("tenant_id") or ""), str(branding.get("logo_file") or ""), log_path)
+    return snapshots
+
+
+def _snapshot_files(paths: List[Path]) -> Dict[Path, Optional[bytes]]:
+    snapshot: Dict[Path, Optional[bytes]] = {}
+    for path in paths:
+        if path in snapshot:
+            continue
+        snapshot[path] = path.read_bytes() if path.exists() else None
+    return snapshot
+
+
+def _restore_staged_files(snapshot: Dict[Path, Optional[bytes]], log_path: Path) -> None:
+    for path, original_bytes in snapshot.items():
+        if original_bytes is None:
+            if path.exists():
+                if path.is_file():
+                    path.unlink()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(original_bytes)
+    _log(log_path, "Restored staged mobile project files after build.")
+
+
+def _write_android_manifest(path: Path, log_path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    updated = re.sub(r'android:label="[^"]*"', 'android:label="@string/app_name"', content, count=1)
+    path.write_text(updated, encoding="utf-8")
+    _log(log_path, f"Updated Android manifest label in {path}")
+
+
+def _write_strings_xml(path: Path, app_name: str, log_path: Path) -> None:
+    escaped_app_name = (
+        str(app_name)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', '\\"')
+        .replace("'", "\\'")
+    )
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<resources>\n'
+        f'    <string name="app_name">{escaped_app_name}</string>\n'
+        '</resources>\n'
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(xml, encoding="utf-8")
+    _log(log_path, f"Wrote Android app name resources to {path}")
+
+
+def _write_build_gradle(path: Path, package_name: str, version: str, version_code: str, log_path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    content = re.sub(r'namespace\s*=\s*"[^"]+"', f'namespace = "{package_name}"', content, count=1)
+    content = re.sub(r'applicationId\s*=\s*"[^"]+"', f'applicationId = "{package_name}"', content, count=1)
+    content = re.sub(r'versionCode\s*=\s*[^\n]+', f'versionCode = {version_code}', content, count=1)
+    content = re.sub(r'versionName\s*=\s*[^\n]+', f'versionName = "{version}"', content, count=1)
+    path.write_text(content, encoding="utf-8")
+    _log(log_path, f"Injected package and version metadata into {path}")
+
+
+def _write_tenant_config(path: Path, branding: Dict[str, object], log_path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    content = re.sub(
+        r"const String embeddedTenantId = '.*?';",
+        f"const String embeddedTenantId = '{_dart_single_quote(str(branding['tenant_id']))}';",
+        content,
+        count=1,
+    )
+    content = re.sub(
+        r"String get embeddedTenantBackendUrl => .*?;",
+        f"String get embeddedTenantBackendUrl => '{_dart_single_quote(str(branding['server_url']))}';",
+        content,
+        count=1,
+    )
+    content = re.sub(
+        r"const String embeddedTenantApiToken = '.*?';",
+        "const String embeddedTenantApiToken = '';",
+        content,
+        count=1,
+    )
+    path.write_text(content, encoding="utf-8")
+    _log(log_path, f"Injected tenant bootstrap config into {path}")
+
+
+def _write_pubspec_assets(path: Path, log_path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    required_assets = [
+        "assets/branding/logo.png",
+        "assets/branding/app_icon.png",
+        "assets/branding/splash.png",
+    ]
+    missing_assets = [asset for asset in required_assets if asset not in content]
+    if missing_assets:
+        assets_block = "".join(f"    - {asset}\n" for asset in required_assets)
+        if re.search(r"^  assets:\n", content, flags=re.MULTILINE):
+            insert_at = content.index("  assets:\n") + len("  assets:\n")
+            content = content[:insert_at] + assets_block + content[insert_at:]
+        elif "  uses-material-design: true\n" in content:
+            content = content.replace(
+                "  uses-material-design: true\n",
+                f"  uses-material-design: true\n  assets:\n{assets_block}",
+                1,
+            )
+    path.write_text(content, encoding="utf-8")
+    _log(log_path, f"Ensured branding assets are declared in {path}")
+
+
+def _write_main_activity_package(source_path: Path, target_path: Path, package_name: str, log_path: Path) -> None:
+    content = source_path.read_text(encoding="utf-8")
+    updated = re.sub(r"^package\s+.+$", f"package {package_name}", content, count=1, flags=re.MULTILINE)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(updated, encoding="utf-8")
+    if source_path.resolve() != target_path.resolve() and source_path.exists():
+        source_path.unlink()
+    _log(log_path, f"Updated MainActivity package path at {target_path}")
+
+
+def _dart_single_quote(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
 
 def _tenant_branding_asset_path(tenant_id: str, filename: str) -> Path:
     return BACKEND_ROOT / "storage" / "branding" / str(tenant_id or "").strip() / filename
@@ -669,14 +861,28 @@ def _replace_launcher_icons(workspace_dir: Path, tenant_id: str, logo_path: str,
         shutil.copy2(source, icon_path)
 
 
-def _run_flutter_command(build_id: str, command: List[str], cwd: Path, log_path: Path) -> None:
+def _powershell_quote(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _run_flutter_command(
+    build_id: str,
+    command: List[str],
+    cwd: Path,
+    log_path: Path,
+) -> None:
     resolved_executable = _resolve_flutter_executable()
-    resolved_command = list(command)
-    if resolved_executable.lower().endswith(".bat"):
-        resolved_command = ["cmd.exe", "/c", resolved_executable, *resolved_command[1:]]
-    else:
-        resolved_command[0] = resolved_executable
-    _log(log_path, f"Running: {' '.join(resolved_command)}")
+    android_sdk_dir = _resolve_android_sdk_dir()
+    resolved_command = [resolved_executable, *command[1:]]
+    _log(log_path, f"Running command: {_format_command_for_log(resolved_command)}")
+    env = os.environ.copy()
+    env.setdefault("FLUTTER_ROOT", _resolve_flutter_root())
+    env.setdefault("CI", "true")
+    env.setdefault("FLUTTER_SUPPRESS_ANALYTICS", "true")
+    env.setdefault("PUB_ENVIRONMENT", "flutter_cli:mobile_builder")
+    if android_sdk_dir:
+        env.setdefault("ANDROID_SDK_ROOT", android_sdk_dir)
+        env.setdefault("ANDROID_HOME", android_sdk_dir)
     try:
         process = subprocess.Popen(
             resolved_command,
@@ -685,11 +891,39 @@ def _run_flutter_command(build_id: str, command: List[str], cwd: Path, log_path:
             stderr=subprocess.PIPE,
             text=True,
             shell=False,
+            bufsize=1,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise RuntimeError("Flutter executable could not be started.") from exc
     with ACTIVE_PROCESSES_LOCK:
         ACTIVE_PROCESSES[build_id] = process
+    reader_errors: List[Exception] = []
+
+    def _drain_output(stream_name: str, stream) -> None:
+        if stream is None:
+            return
+        try:
+            for line in stream:
+                if line:
+                    _log(log_path, f"[{stream_name}] {line.rstrip()}")
+        except Exception as exc:
+            reader_errors.append(exc)
+
+    stdout_thread = threading.Thread(
+        target=_drain_output,
+        args=("stdout", process.stdout),
+        name=f"mobile-build-stdout-{build_id}",
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_drain_output,
+        args=("stderr", process.stderr),
+        name=f"mobile-build-stderr-{build_id}",
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
     cancelled = False
     try:
         while process.poll() is None:
@@ -700,21 +934,29 @@ def _run_flutter_command(build_id: str, command: List[str], cwd: Path, log_path:
                 except Exception:
                     pass
             time.sleep(0.2)
-        stdout, stderr = process.communicate()
+        process.wait()
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
     finally:
         with ACTIVE_PROCESSES_LOCK:
             ACTIVE_PROCESSES.pop(build_id, None)
-    if stdout:
-        _log(log_path, stdout)
-    if stderr:
-        _log(log_path, stderr)
+    if process.stdout is not None:
+        process.stdout.close()
+    if process.stderr is not None:
+        process.stderr.close()
+    if reader_errors:
+        _log(log_path, f"Output reader error: {reader_errors[0]}")
     if cancelled or _is_cancellation_requested(build_id):
         raise BuildCancelledError("Build cancelled by user.")
     if process.returncode != 0:
-        raise RuntimeError(f"{' '.join(command)} failed with exit code {process.returncode}.")
+        raise RuntimeError(f"{_format_command_for_log(resolved_command)} failed with exit code {process.returncode}.")
 
 
 def _log(path: Path, message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"{utc_now_iso()} {message.rstrip()}\n")
+
+
+def _format_command_for_log(command: List[str]) -> str:
+    return " ".join(_powershell_quote(part) if " " in str(part) else str(part) for part in command)

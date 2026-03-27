@@ -165,7 +165,7 @@
               </div>
             </div>
               <div class="backend-grid">
-                <div class="metadata-card">
+                <div class="metadata-card master-only">
                   <div class="pane-header compact">
                     <div><h4>Backend API</h4><p>Used by Chrome preview and desktop runtime requests.</p></div>
                     <span id="backendApiState" class="pill">Disconnected</span>
@@ -178,7 +178,7 @@
                     <button class="primary-button" id="backendApiConnectButton" type="button">Connect</button>
                   </div>
                 </div>
-                <div class="metadata-card">
+                <div class="metadata-card master-only">
                   <div class="pane-header compact">
                     <div><h4>Public API</h4><p>Used for APK/public distribution endpoints.</p></div>
                     <span id="publicApiState" class="pill">Disconnected</span>
@@ -196,7 +196,7 @@
               <div class="field auth-hidden"><label for="tenantSelect">Tenant</label><select id="tenantSelect"></select></div>
               <div class="field auth-hidden"><label for="tenantUsernameInput">Tenant Admin</label><input id="tenantUsernameInput" type="text" placeholder="tenant admin"></div>
               <div class="field auth-hidden"><label for="tenantPasswordInput">Tenant Password</label><input id="tenantPasswordInput" type="password" placeholder="tenant password"></div>
-              <label class="toggle">
+              <label class="toggle master-only">
                 <input id="chromePreviewApiToggle" type="checkbox">
                 <span>Temporarily use Public API for Chrome preview testing</span>
               </label>
@@ -455,6 +455,20 @@
               <progress id="mobileBuildProgressBar" max="100" value="0"></progress>
               <p id="mobileBuildErrorLabel" class="subtle">Builds are queued and processed one at a time.</p>
             </div>
+            <section class="card section-card">
+              <div class="pane-header">
+                <div>
+                  <h3>Build Logs</h3>
+                  <p>Full stdout and stderr from the Flutter APK build worker.</p>
+                </div>
+                <div class="form-actions">
+                  <button class="ghost-button small-button" id="clearMobileBuildLogsButton" type="button">Clear Logs</button>
+                  <button class="ghost-button small-button" id="copyMobileBuildLogsButton" type="button">Copy Logs</button>
+                  <button class="ghost-button small-button" id="downloadMobileBuildLogsButton" type="button">Download .log</button>
+                </div>
+              </div>
+              <pre id="mobileBuildLogsOutput" class="log-output">No build logs yet.</pre>
+            </section>
             <div class="viewer-history">
               <table class="data-table">
                 <thead><tr><th>Version</th><th>Status</th><th>Progress</th><th>Created</th><th>APK</th><th>Action</th></tr></thead>

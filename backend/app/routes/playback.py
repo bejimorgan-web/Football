@@ -2,15 +2,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.services.iptv import IPTVAuthError, IPTVProviderError, list_streams
-from app.storage import load_config, resolve_playback_url, validate_stream_token
+from app.storage import load_provider_settings, resolve_playback_url, validate_stream_token
 
 router = APIRouter()
 
 
-def _require_settings():
-    settings = load_config()
+def _require_settings(tenant_id: str):
+    settings = load_provider_settings(tenant_id=tenant_id)
     if settings is None:
-        raise HTTPException(status_code=503, detail="Backend is not configured.")
+        raise HTTPException(status_code=503, detail="Tenant provider backend is not configured.")
     return settings
 
 
@@ -18,7 +18,10 @@ def _require_settings():
 def play_stream(token: str):
     try:
         payload = validate_stream_token(token)
-        settings = _require_settings()
+        tenant_id = str(payload.get("tenant_id") or "").strip()
+        if not tenant_id:
+            raise ValueError("Stream token is missing tenant scope.")
+        settings = _require_settings(tenant_id)
         stream_url = resolve_playback_url(
             list_streams(settings=settings, force_refresh=False),
             str(payload.get("stream_id") or ""),

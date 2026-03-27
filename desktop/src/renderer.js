@@ -41,7 +41,7 @@ const state = {
   masterLive: { status: "idle", version: null, streams: { items: [] }, liveScores: { matches: [] }, standings: { standings: [] }, fixtures: { matches: [] }, lastUpdatedAt: "", error: "" },
   platformClients: { items: [], stats: {}, audit_logs: [] },
   security: { flagged_devices: [], vpn_users: [], suspicious_ip_changes: [], blocked_devices: [], active_sessions: [], security_logs: [] },
-  mobileBuilder: { history: [], latest: null, activeBuildId: "", status: { status: "idle", progress: 0, version: "", artifact_name: "", error: "" } },
+  mobileBuilder: { history: [], latest: null, activeBuildId: "", status: { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" } },
   apkManagement: { items: [], latest: null },
   updateInfo: { history: [], latest: null, dismissed: false, state: { status: "idle", currentVersion: "" } },
   groups: [],
@@ -52,6 +52,9 @@ const state = {
   activeSection: "dashboard",
   activeCatalogTab: "nations",
 };
+
+let mobileBuildLogsShouldAutoScroll = true;
+let mobileBuildLogsHiddenSnapshot = "";
 
 const DEFAULT_API_URL = "http://127.0.0.1:8000";
 
@@ -206,6 +209,10 @@ const el = {
   mobileBuildArtifactLabel: $("mobileBuildArtifactLabel"),
   mobileBuildProgressBar: $("mobileBuildProgressBar"),
   mobileBuildErrorLabel: $("mobileBuildErrorLabel"),
+  mobileBuildLogsOutput: $("mobileBuildLogsOutput"),
+  clearMobileBuildLogsButton: $("clearMobileBuildLogsButton"),
+  copyMobileBuildLogsButton: $("copyMobileBuildLogsButton"),
+  downloadMobileBuildLogsButton: $("downloadMobileBuildLogsButton"),
   mobileBuildLockMessage: $("mobileBuildLockMessage"),
   mobileBuildHistoryTable: $("mobileBuildHistoryTable"),
   apkVersionInput: $("apkVersionInput"),
@@ -442,6 +449,26 @@ function optionMarkup(items, selected = "", includeEmpty = false) {
 function logoMarkup(url, label, large = false) {
   const klass = `logo-avatar${large ? " large" : ""}`;
   return url ? `<div class="${klass}"><img src="${assetUrl(url)}" alt="${html(label)}"></div>` : `<div class="${klass}">${html(String(label || "?").slice(0, 2))}</div>`;
+}
+
+function firstLogoValue(...values) {
+  for (const value of values) {
+    const normalized = String(value || "").trim();
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function approvedMatchLogoMarkup(match) {
+  const homeLogoUrl = firstLogoValue(match.home_club_logo, match.home_team_logo, match.home_logo, match.stream_logo);
+  const awayLogoUrl = firstLogoValue(match.away_club_logo, match.away_team_logo, match.away_logo, match.stream_logo);
+  const competitionLogoUrl = firstLogoValue(match.competition_logo, match.logo, match.nation_logo, match.stream_logo);
+  const homeLogo = logoMarkup(homeLogoUrl, match.home_club_name || match.home_team_name || "Home");
+  const awayLogo = logoMarkup(awayLogoUrl, match.away_club_name || match.away_team_name || "Away");
+  const competitionLogo = competitionLogoUrl
+    ? `<div class="approved-competition-logo" title="${html(match.competition_name || "Competition")}">${logoMarkup(competitionLogoUrl, match.competition_name || "Competition")}</div>`
+    : "";
+  return `<div class="approved-match-logos">${homeLogo}<span class="approved-logo-separator">vs</span>${awayLogo}${competitionLogo}</div>`;
 }
 
 function paintLogo(node, url, label) {
@@ -777,9 +804,28 @@ function renderEntityList(node, items, emptyMessage, onClick, onDoubleClick) {
 
 function renderMetadataLists() {
   const actionButtons = (item, type) => `<div class="list-item-actions"><button type="button" class="ghost-button small-button" data-action="edit" data-id="${html(item.id)}" data-type="${html(type)}">Edit</button><button type="button" class="ghost-button small-button" data-action="delete" data-id="${html(item.id)}" data-type="${html(type)}">Delete</button></div>`;
-  const nations = state.nations.map((nation) => ({ ...nation, typeHint: "nation", markup: `<div><strong>${html(nation.name)}</strong><span class="subtle">${state.competitions.filter((item) => item.nation_id === nation.id).length} competitions</span></div>${actionButtons(nation, "nation")}` }));
-  const competitions = (state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions).map((competition) => ({ ...competition, markup: `<div><strong>${html(competition.name)}</strong><span class="subtle">${html(competition.type || "league")}</span></div>${actionButtons(competition, "competition")}` }));
-  const clubs = (state.selectedNationId ? state.clubs.filter((item) => item.nation_id === state.selectedNationId) : state.clubs).map((club) => ({ ...club, markup: `<div><strong>${html(club.name)}</strong><span class="subtle">${html(state.competitions.find((item) => item.id === club.competition_id)?.name || "Reusable club")}</span></div>${actionButtons(club, "club")}` }));
+  const itemContent = (item, label, subtitle) => `
+    <div class="row-with-logo">
+      ${logoMarkup(item.logo_url, label)}
+      <div>
+        <strong>${html(label)}</strong>
+        <span class="subtle">${html(subtitle)}</span>
+      </div>
+    </div>
+  `;
+  const nations = state.nations.map((nation) => ({
+    ...nation,
+    typeHint: "nation",
+    markup: `${itemContent(nation, nation.name, `${state.competitions.filter((item) => item.nation_id === nation.id).length} competitions`)}${actionButtons(nation, "nation")}`,
+  }));
+  const competitions = (state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions).map((competition) => ({
+    ...competition,
+    markup: `${itemContent(competition, competition.name, competition.type || "league")}${actionButtons(competition, "competition")}`,
+  }));
+  const clubs = (state.selectedNationId ? state.clubs.filter((item) => item.nation_id === state.selectedNationId) : state.clubs).map((club) => ({
+    ...club,
+    markup: `${itemContent(club, club.name, state.competitions.find((item) => item.id === club.competition_id)?.name || "Reusable club")}${actionButtons(club, "club")}`,
+  }));
 
   const selectNation = (nation) => {
     state.selectedNationId = nation.id;
@@ -1017,7 +1063,7 @@ function renderApprovedMatches() {
   for (const match of state.approvedMatches) {
     const row = document.createElement("article");
     row.className = "approved-row";
-    row.innerHTML = `<div class="approved-topline"><div class="row-with-logo">${logoMarkup(match.competition_logo, match.competition_name)}<div><strong>${html(match.home_club_name)} vs ${html(match.away_club_name)}</strong><div class="subtle">${html(match.nation_name)} / ${html(match.competition_name)}</div></div></div><span class="pill active">${html(match.kickoff_label || "Live")}</span></div><div class="form-actions"><button class="ghost-button small-button preview-match">Preview</button><button class="ghost-button small-button remove-match">Remove</button></div>`;
+    row.innerHTML = `<div class="approved-topline"><div class="row-with-logo">${approvedMatchLogoMarkup(match)}<div><strong>${html(match.home_club_name)} vs ${html(match.away_club_name)}</strong><div class="subtle">${html(match.nation_name)} / ${html(match.competition_name)}</div></div></div><span class="pill active">${html(match.kickoff_label || "Live")}</span></div><div class="form-actions"><button class="ghost-button small-button preview-match">Preview</button><button class="ghost-button small-button remove-match">Remove</button></div>`;
     row.querySelector(".preview-match").addEventListener("click", () => {
       selectChannel(match);
       playStream(match);
@@ -1187,7 +1233,12 @@ function renderPlatformClients() {
 }
 
 function renderMobileBuilds() {
-  const status = state.mobileBuilder.status || { status: "idle", progress: 0, version: "", artifact_name: "", error: "" };
+  const status = state.mobileBuilder.status || { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" };
+  const rawLogs = String(status.logs || "");
+  const visibleLogs = rawLogs && rawLogs === mobileBuildLogsHiddenSnapshot ? "" : rawLogs;
+  if (rawLogs && rawLogs !== mobileBuildLogsHiddenSnapshot) {
+    mobileBuildLogsHiddenSnapshot = "";
+  }
   if (el.mobileBuildStatusLabel) el.mobileBuildStatusLabel.textContent = status.status || "idle";
   if (el.mobileBuildProgressText) el.mobileBuildProgressText.textContent = `${Number(status.progress || 0)}%`;
   if (el.mobileBuildVersionLabel) el.mobileBuildVersionLabel.textContent = status.version || "-";
@@ -1197,6 +1248,14 @@ function renderMobileBuilds() {
     el.mobileBuildErrorLabel.textContent = status.error || (mobileAppAlreadyGenerated()
       ? "Mobile app already generated. Branding changes now refresh dynamically in the installed app."
       : "Builds are queued and processed one at a time.");
+  }
+  if (el.mobileBuildLogsOutput) {
+    const shouldPinToBottom = mobileBuildLogsShouldAutoScroll || isScrolledNearBottom(el.mobileBuildLogsOutput);
+    el.mobileBuildLogsOutput.textContent = visibleLogs || "No build logs yet.";
+    if (shouldPinToBottom) {
+      el.mobileBuildLogsOutput.scrollTop = el.mobileBuildLogsOutput.scrollHeight;
+      mobileBuildLogsShouldAutoScroll = true;
+    }
   }
   applyMobileBuildLockState();
   if (el.mobileBuildHistoryTable) {
@@ -1224,6 +1283,57 @@ function renderMobileBuilds() {
       });
     });
   }
+}
+
+function isScrolledNearBottom(node, threshold = 24) {
+  if (!node) return true;
+  return node.scrollHeight - node.scrollTop - node.clientHeight <= threshold;
+}
+
+async function copyMobileBuildLogs() {
+  const logs = String(state.mobileBuilder.status?.logs || "").trim();
+  const text = logs || "No build logs yet.";
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.setAttribute("readonly", "true");
+      helper.style.position = "absolute";
+      helper.style.left = "-9999px";
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand("copy");
+      document.body.removeChild(helper);
+    }
+    showToast("Build logs copied.");
+  } catch (error) {
+    showToast("Could not copy build logs.", true);
+  }
+}
+
+function clearMobileBuildLogsView() {
+  mobileBuildLogsHiddenSnapshot = String(state.mobileBuilder.status?.logs || "");
+  mobileBuildLogsShouldAutoScroll = true;
+  renderMobileBuilds();
+  showToast("Build logs cleared from viewer.");
+}
+
+function downloadMobileBuildLogs() {
+  const logs = String(state.mobileBuilder.status?.logs || "");
+  const text = logs || "No build logs yet.\n";
+  const buildId = String(state.mobileBuilder.status?.build_id || state.mobileBuilder.activeBuildId || "mobile-build");
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${buildId}.log`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast("Build log downloaded.");
 }
 
 function renderApkManagement() {
@@ -1557,7 +1667,7 @@ async function refreshMobileBuilds() {
   } else if (state.mobileBuilder.activeBuildId) {
     state.mobileBuilder.status = await window.desktopApi.fetchMobileBuildStatus(state.mobileBuilder.activeBuildId).catch(() => state.mobileBuilder.status);
   } else {
-    state.mobileBuilder.status = { status: "idle", progress: 0, version: "", artifact_name: "", error: "" };
+    state.mobileBuilder.status = { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" };
   }
   renderMobileBuilds();
 }
@@ -1873,6 +1983,10 @@ el.tenantLoginButton.addEventListener("click", async () => {
 });
 
 async function handleApiEndpointAction(kind, action) {
+  if (!isMasterRole()) {
+    showToast("Only master admins can manage platform API endpoints.", true);
+    return;
+  }
   const endpoint = kind === "public"
     ? { url: el.publicApiUrlInput.value.trim(), apiToken: el.publicApiTokenInput.value.trim() }
     : { url: el.backendApiUrlInput.value.trim(), apiToken: el.backendApiTokenInput.value.trim() };
@@ -2035,6 +2149,22 @@ el.refreshMobileBuildsButton?.addEventListener("click", async () => {
   } catch (error) {
     showToast(error.message, true);
   }
+});
+
+el.mobileBuildLogsOutput?.addEventListener("scroll", () => {
+  mobileBuildLogsShouldAutoScroll = isScrolledNearBottom(el.mobileBuildLogsOutput);
+});
+
+el.clearMobileBuildLogsButton?.addEventListener("click", () => {
+  clearMobileBuildLogsView();
+});
+
+el.copyMobileBuildLogsButton?.addEventListener("click", async () => {
+  await copyMobileBuildLogs();
+});
+
+el.downloadMobileBuildLogsButton?.addEventListener("click", () => {
+  downloadMobileBuildLogs();
 });
 
 el.uploadApkButton?.addEventListener("click", async () => {

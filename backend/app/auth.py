@@ -4,7 +4,7 @@ from typing import Callable, Optional
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from app.settings import is_development_mode, load_admin_settings_from_env
+from app.settings import load_admin_settings_from_env
 from app.storage import _normalize_admin_role, validate_admin_api_token, validate_mobile_tenant_access, validate_tenant_access_token
 
 security = HTTPBasic(auto_error=False)
@@ -124,16 +124,6 @@ def require_mobile_context(
     tenant_id = str(x_tenant_id or request.query_params.get("tenant_id") or "").strip()
     device_id = str(x_device_id or request.query_params.get("device_id") or "").strip()
     server_id = str(x_server_id or request.query_params.get("server_id") or "").strip()
-    if is_development_mode():
-        request.state.mobile_context = {
-            "scope": "mobile-dev",
-            "tenant_id": tenant_id or "master",
-            "device_id": device_id or "dev-device",
-            "server_id": server_id or "dev-server",
-            "api_token": token,
-            "mode": "development",
-        }
-        return
     if not token or not tenant_id or not device_id or not server_id:
         raise HTTPException(status_code=403, detail="Tenant-scoped mobile credentials are required.")
     try:

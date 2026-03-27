@@ -9,41 +9,60 @@ from app import mobile_builder
 def _configure_builder(monkeypatch, tmp_path):
     backend_root = tmp_path / "backend"
     project_root = tmp_path / "project"
-    template_dir = project_root / "mobile-template"
+    mobile_dir = project_root / "mobile"
     generated_dir = backend_root / "generated_apps"
     queue_dir = backend_root / "build_queue"
     logs_dir = backend_root / "logs"
     tenant_root = backend_root / "data" / "tenants" / "admin-1"
     assets_root = backend_root / "data" / "assets" / "branding" / "admin-1"
+    flutter_root = project_root / "flutter-sdk"
+    android_main = mobile_dir / "android" / "app" / "src" / "main"
 
-    template_activity = template_dir / "android" / "app" / "src" / "main" / "kotlin" / "com" / "example" / "mobile_new"
-    template_activity.mkdir(parents=True, exist_ok=True)
-    (template_dir / "lib" / "config").mkdir(parents=True, exist_ok=True)
-    (template_dir / "android" / "app" / "src" / "main" / "res" / "drawable").mkdir(parents=True, exist_ok=True)
+    (android_main / "kotlin" / "com" / "example" / "mobile_new").mkdir(parents=True, exist_ok=True)
     for density in ["mipmap-hdpi", "mipmap-mdpi", "mipmap-xhdpi", "mipmap-xxhdpi", "mipmap-xxxhdpi"]:
-        icon_dir = template_dir / "android" / "app" / "src" / "main" / "res" / density
+        icon_dir = android_main / "res" / density
         icon_dir.mkdir(parents=True, exist_ok=True)
-        (icon_dir / "ic_launcher.png").write_bytes(b"icon")
-    (template_dir / "lib" / "config" / "app_config.dart").write_text(
-        "const embeddedAppName='APP_NAME'; const embeddedPackageName='PACKAGE_NAME'; const embeddedServerUrl='SERVER_URL'; const embeddedTenantId='TENANT_ID'; const embeddedPrimaryColor='PRIMARY_COLOR'; const embeddedSecondaryColor='SECONDARY_COLOR'; const embeddedLogoPath='LOGO_PATH'; const embeddedAppVersion='APP_VERSION';",
+        (icon_dir / "ic_launcher.png").write_bytes(b"default-icon")
+    (android_main / "AndroidManifest.xml").write_text(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="mobile_new" android:icon="@mipmap/ic_launcher"></application></manifest>',
         encoding="utf-8",
     )
-    (template_dir / "lib" / "config" / "backend.dart").write_text("SERVER_URL TENANT_ID", encoding="utf-8")
-    (template_dir / "lib" / "config" / "backend_web_stub.dart").write_text("SERVER_URL", encoding="utf-8")
-    (template_dir / "lib" / "main.dart").write_text("APP_NAME PACKAGE_NAME SERVER_URL TENANT_ID PRIMARY_COLOR SECONDARY_COLOR LOGO_PATH APP_VERSION", encoding="utf-8")
-    (template_dir / "pubspec.yaml").write_text("name: PUBSPEC_NAME\nversion: APP_VERSION+1\n", encoding="utf-8")
-    (template_dir / "android" / "app" / "build.gradle.kts").write_text('namespace = "PACKAGE_NAME"\napplicationId = "PACKAGE_NAME"\n', encoding="utf-8")
-    (template_dir / "android" / "app" / "src" / "main" / "AndroidManifest.xml").write_text('android:label="APP_NAME"', encoding="utf-8")
-    (template_activity / "MainActivity.kt").write_text("package PACKAGE_NAME", encoding="utf-8")
-    (template_dir / "android" / "app" / "src" / "main" / "res" / "drawable" / "launch_background.xml").write_text("PRIMARY_COLOR", encoding="utf-8")
+    (android_main / "kotlin" / "com" / "example" / "mobile_new" / "MainActivity.kt").write_text(
+        "package com.example.mobile_new\nclass MainActivity\n",
+        encoding="utf-8",
+    )
+    (mobile_dir / "lib" / "config").mkdir(parents=True, exist_ok=True)
+    (mobile_dir / "lib" / "config" / "tenant_config.dart").write_text(
+        "const String embeddedTenantId = 'default';\nString get embeddedTenantBackendUrl => NetworkConfig.baseUrl;\nconst String embeddedTenantApiToken = '';\n",
+        encoding="utf-8",
+    )
+    (mobile_dir / "pubspec.yaml").write_text(
+        "name: football_streaming_mobile\nflutter:\n  uses-material-design: true\n",
+        encoding="utf-8",
+    )
+    (mobile_dir / "android" / "app" / "build.gradle.kts").write_text(
+        'android {\n    namespace = "com.example.mobile_new"\n    defaultConfig {\n        applicationId = "com.example.mobile_new"\n        versionCode = flutter.versionCode\n        versionName = flutter.versionName\n    }\n}\n',
+        encoding="utf-8",
+    )
+    (flutter_root / "bin").mkdir(parents=True, exist_ok=True)
+    (flutter_root / "bin" / "flutter.bat").write_text("@echo off\n", encoding="utf-8")
+    (mobile_dir / "android" / "local.properties").write_text(
+        f"sdk.dir={str(project_root / 'android-sdk').replace(chr(92), '/')}\nflutter.sdk={str(flutter_root).replace(chr(92), '/')}\n",
+        encoding="utf-8",
+    )
 
     assets_root.mkdir(parents=True, exist_ok=True)
     (assets_root / "logo.png").write_bytes(b"pngdata")
+    branding_storage = backend_root / "storage" / "branding" / "goaltv"
+    branding_storage.mkdir(parents=True, exist_ok=True)
+    (branding_storage / "logo.png").write_bytes(b"tenant-logo")
+    (branding_storage / "mobile_icon.png").write_bytes(b"tenant-icon")
+    (branding_storage / "splash.png").write_bytes(b"tenant-splash")
     tenant_root.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(mobile_builder, "BACKEND_ROOT", backend_root)
     monkeypatch.setattr(mobile_builder, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(mobile_builder, "MOBILE_TEMPLATE_DIR", template_dir)
+    monkeypatch.setattr(mobile_builder, "PRIMARY_MOBILE_PROJECT_DIR", mobile_dir)
     monkeypatch.setattr(mobile_builder, "GENERATED_APPS_DIR", generated_dir)
     monkeypatch.setattr(mobile_builder, "BUILD_QUEUE_DIR", queue_dir)
     monkeypatch.setattr(mobile_builder, "BUILD_QUEUE_JOBS_PATH", queue_dir / "jobs.json")
@@ -91,7 +110,7 @@ def test_queue_mobile_build_blocks_duplicate_generation(monkeypatch, tmp_path):
 
     first = mobile_builder.queue_mobile_build("admin-1")
 
-    assert first["version"] == "1.0"
+    assert first["version"] == "1.0.0"
     try:
         mobile_builder.queue_mobile_build("admin-1")
     except ValueError as exc:
@@ -125,7 +144,8 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
     backend_root, tenant_state = _configure_builder(monkeypatch, tmp_path)
     job = mobile_builder.queue_mobile_build("admin-1")
 
-    def fake_run(command, cwd, log_path):
+    def fake_run(build_id, command, cwd, log_path):
+        mobile_builder._log(log_path, f"fake run: {' '.join(command)}")
         if command[:3] == ["flutter", "build", "apk"]:
             apk = Path(cwd) / "build" / "app" / "outputs" / "flutter-apk"
             apk.mkdir(parents=True, exist_ok=True)
@@ -137,8 +157,13 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
     status = mobile_builder.get_build_status("admin-1", job["build_id"])
     assert status["status"] == "completed"
     assert status["progress"] == 100
+    assert "fake run: flutter pub get" in status["logs"]
+    assert "fake run: flutter clean" in status["logs"]
+    assert "fake run: flutter build apk --release" in status["logs"]
     assert status["mobile_app_generated"] is True
-    artifact = backend_root / "generated_apps" / "admin-1" / "Goal-TV-1.0.apk"
+    artifact = backend_root / "generated_apps" / "admin-1" / "Goal-TV-1.0.0.apk"
     assert artifact.exists()
     assert tenant_state["mobile_app_generated"] is True
     assert tenant_state["mobile_app_package_id"] == "com.goaltv.mobile"
+    restored_manifest = (Path(mobile_builder.PRIMARY_MOBILE_PROJECT_DIR) / "android" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+    assert 'android:label="mobile_new"' in restored_manifest

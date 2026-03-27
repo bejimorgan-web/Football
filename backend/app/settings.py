@@ -6,7 +6,18 @@ from pydantic import BaseModel
 from app.config import DEFAULT_API_URL
 
 DEFAULT_API_BASE_URL = DEFAULT_API_URL
-MODE = (os.getenv("MODE") or "development").strip().lower() or "development"
+
+
+def _resolve_mode() -> str:
+    raw_mode = str(os.getenv("MODE") or "").strip().lower()
+    if not raw_mode:
+        return "production"
+    if raw_mode not in {"development", "production"}:
+        raise RuntimeError("MODE must be either 'development' or 'production'.")
+    return raw_mode
+
+
+MODE = _resolve_mode()
 
 
 class IPTVSettings(BaseModel):
