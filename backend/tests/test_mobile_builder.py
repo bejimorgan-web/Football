@@ -151,6 +151,7 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
             apk.mkdir(parents=True, exist_ok=True)
             (apk / "app-release.apk").write_bytes(b"apk")
 
+    monkeypatch.setattr(mobile_builder, "_ensure_flutter_available", lambda log_path=None: "C:/FlutterSDK/bin/flutter.bat")
     monkeypatch.setattr(mobile_builder, "_run_flutter_command", fake_run)
     mobile_builder._process_job(job)
 
@@ -167,3 +168,27 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
     assert tenant_state["mobile_app_package_id"] == "com.goaltv.mobile"
     restored_manifest = (Path(mobile_builder.PRIMARY_MOBILE_PROJECT_DIR) / "android" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
     assert 'android:label="mobile_new"' in restored_manifest
+
+
+def test_flutter_preflight_requires_installed_sdk(monkeypatch, tmp_path):
+    _configure_builder(monkeypatch, tmp_path)
+    monkeypatch.setattr(mobile_builder, "_resolve_flutter_executable", lambda: (_ for _ in ()).throw(RuntimeError("missing flutter")))
+
+    try:
+        mobile_builder._ensure_flutter_available()
+    except RuntimeError as exc:
+        assert "Flutter SDK is required before running APK builds" in str(exc)
+    else:
+        raise AssertionError("Expected missing Flutter preflight error")
+
+
+def test_android_sdk_preflight_requires_installed_sdk(monkeypatch, tmp_path):
+    _configure_builder(monkeypatch, tmp_path)
+    monkeypatch.setattr(mobile_builder, "_resolve_android_sdk_dir", lambda: "")
+
+    try:
+        mobile_builder._ensure_android_sdk_available()
+    except RuntimeError as exc:
+        assert "Android SDK is required before running APK builds" in str(exc)
+    else:
+        raise AssertionError("Expected missing Android SDK preflight error")

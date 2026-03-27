@@ -336,6 +336,42 @@ def _resolve_flutter_executable() -> str:
     raise RuntimeError(f"Flutter executable not found under {flutter_root}.")
 
 
+def _ensure_flutter_available(log_path: Optional[Path] = None) -> str:
+    try:
+        flutter_executable = _resolve_flutter_executable()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Flutter SDK is required before running APK builds. "
+            "Set FLUTTER_ROOT to a valid Flutter installation path or install Flutter "
+            "and configure mobile/android/local.properties with flutter.sdk."
+        ) from exc
+
+    try:
+        subprocess.run(
+            [flutter_executable, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=False,
+            check=True,
+            timeout=30,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "Flutter executable is not available in the build environment. "
+            "Set FLUTTER_ROOT to a valid Flutter installation path or install Flutter before building."
+        ) from exc
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise RuntimeError(
+            "Flutter SDK was found but could not be executed. "
+            "Install Flutter correctly or update FLUTTER_ROOT/mobile/android/local.properties before building."
+        ) from exc
+
+    if log_path is not None:
+        _log(log_path, f"Verified Flutter SDK availability via {flutter_executable}")
+    return flutter_executable
+
+
 def _resolve_android_sdk_dir() -> str:
     candidates = [
         os.environ.get("ANDROID_SDK_ROOT", "").strip(),
@@ -346,6 +382,33 @@ def _resolve_android_sdk_dir() -> str:
         if value and Path(value).exists():
             return str(Path(value).resolve())
     return ""
+
+
+def _ensure_android_sdk_available(log_path: Optional[Path] = None) -> str:
+    android_sdk_dir = _resolve_android_sdk_dir()
+    if not android_sdk_dir:
+        raise RuntimeError(
+            "Android SDK is required before running APK builds. "
+            "Set ANDROID_SDK_ROOT or ANDROID_HOME to a valid Android SDK path, "
+            "or configure mobile/android/local.properties with sdk.dir."
+        )
+
+    sdk_path = Path(android_sdk_dir)
+    required_candidates = [
+        sdk_path / "platform-tools",
+        sdk_path / "build-tools",
+        sdk_path / "platforms",
+    ]
+    if not all(path.exists() for path in required_candidates):
+        raise RuntimeError(
+            "Android SDK was found but appears incomplete. "
+            "Install the Android SDK platform tools, build tools, and platforms, "
+            f"or update sdk.dir/ANDROID_SDK_ROOT. Resolved path: {sdk_path}"
+        )
+
+    if log_path is not None:
+        _log(log_path, f"Verified Android SDK availability via {sdk_path}")
+    return str(sdk_path)
 
 
 def _pubspec_name(package_name: str) -> str:
@@ -574,7 +637,10 @@ def _process_job(job: Dict[str, object]) -> None:
         _update_job(build_id, {"status": "building", "progress": 15, "updated_at": utc_now_iso(), "error": ""})
         _log(log_path, f"Starting build {build_id} for admin {admin_id}")
         _log(log_path, f"Working directory: {project_dir}")
-        _log(log_path, f"Flutter executable: {_resolve_flutter_executable()}")
+        flutter_executable = _ensure_flutter_available(log_path)
+        _log(log_path, f"Flutter executable: {flutter_executable}")
+        android_sdk_dir = _ensure_android_sdk_available(log_path)
+        _log(log_path, f"Android SDK directory: {android_sdk_dir}")
         if not project_dir.exists():
             raise RuntimeError(f"Mobile project directory not found: {project_dir}")
         branding = _resolve_branding(admin_id)
