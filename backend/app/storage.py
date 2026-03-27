@@ -62,7 +62,10 @@ _SUBSCRIPTION_PLAN_REVENUE = {
 MAX_VIEWER_SESSIONS = 5000
 MAX_SECURITY_LOGS = 2000
 MAX_STREAM_SESSIONS = 500
+MAX_AUDIT_LOGS = 10000
+_AUDIT_LOG_BUFFER_LIMIT = 25
 _ACTIVE_VIEWERS: Dict[str, Dict[str, object]] = {}
+_AUDIT_LOG_BUFFER: List[Dict[str, object]] = []
 STREAM_TOKEN_TTL_SECONDS = 60
 PRIVATE_IP_PREFIXES = ("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "127.", "::1")
 DEFAULT_TENANT_ID = "default"
@@ -1136,16 +1139,34 @@ def save_subscription_logs(logs: List[Dict[str, object]]) -> None:
     _write_json(SUBSCRIPTION_LOGS_PATH, [_normalize_subscription_log(item) for item in logs][-5000:])
 
 
-def load_audit_logs() -> List[Dict[str, object]]:
+def _load_persisted_audit_logs() -> List[Dict[str, object]]:
     payload = _read_json(AUDIT_LOGS_PATH, [])
     items = [_normalize_audit_log(item) for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
     if items != payload:
-        save_audit_logs(items)
+        _write_json(AUDIT_LOGS_PATH, items[-MAX_AUDIT_LOGS:])
     return items
 
 
+def load_audit_logs() -> List[Dict[str, object]]:
+    return _load_persisted_audit_logs() + list(_AUDIT_LOG_BUFFER)
+
+
 def save_audit_logs(logs: List[Dict[str, object]]) -> None:
-    _write_json(AUDIT_LOGS_PATH, [_normalize_audit_log(item) for item in logs][-10000:])
+    global _AUDIT_LOG_BUFFER
+    _AUDIT_LOG_BUFFER = []
+    _write_json(AUDIT_LOGS_PATH, [_normalize_audit_log(item) for item in logs][-MAX_AUDIT_LOGS:])
+
+
+def flush_audit_logs(force: bool = False) -> None:
+    global _AUDIT_LOG_BUFFER
+    if not _AUDIT_LOG_BUFFER:
+        return
+    if not force and len(_AUDIT_LOG_BUFFER) < _AUDIT_LOG_BUFFER_LIMIT:
+        return
+    logs = _load_persisted_audit_logs()
+    logs.extend(_AUDIT_LOG_BUFFER)
+    _AUDIT_LOG_BUFFER = []
+    _write_json(AUDIT_LOGS_PATH, [_normalize_audit_log(item) for item in logs][-MAX_AUDIT_LOGS:])
 
 
 def load_email_logs() -> List[Dict[str, object]]:
@@ -2006,6 +2027,7 @@ def log_audit_event(
     scope: str = "",
     duration_ms: int = 0,
 ) -> Dict[str, object]:
+    global _AUDIT_LOG_BUFFER
     entry = _normalize_audit_log(
         {
             "id": uuid4().hex,
@@ -2021,9 +2043,8 @@ def log_audit_event(
             "duration_ms": duration_ms,
         }
     )
-    logs = load_audit_logs()
-    logs.append(entry)
-    save_audit_logs(logs)
+    _AUDIT_LOG_BUFFER.append(entry)
+    flush_audit_logs()
     return entry
 
 

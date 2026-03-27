@@ -42,11 +42,15 @@ from app.routes.updates import router as updates_router
 from app.routes.version import router as version_router
 from app.routes.viewer import router as viewer_router
 from app.settings import is_development_mode, load_backup_settings_from_env, load_email_settings_from_env, load_settings_from_env, validate_settings
-from app.storage import ASSETS_DIR, ensure_storage_files, load_config, log_audit_event, save_config
+from app.storage import ASSETS_DIR, ensure_storage_files, flush_audit_logs, load_config, log_audit_event, save_config
 from app.tenant_middleware import tenant_resolver
 from app.update_service import ensure_update_storage
 
 logger = logging.getLogger("football_iptv.api")
+AUDIT_EXCLUDED_PREFIXES = (
+    "/analytics/",
+    "/admin/security",
+)
 
 
 def _cors_allowed_origins() -> list[str]:
@@ -88,6 +92,13 @@ app.add_middleware(
     max_age=86400,
 )
 app.middleware("http")(tenant_resolver)
+
+
+def _should_audit_request(request: Request) -> bool:
+    if request.method.upper() != "GET":
+        return True
+    path = request.url.path
+    return not any(path.startswith(prefix) for prefix in AUDIT_EXCLUDED_PREFIXES)
 
 app.include_router(streams_router, prefix="/streams", tags=["streams"])
 app.include_router(config_router, prefix="/config", tags=["config"])
@@ -152,6 +163,8 @@ async def log_requests(request: Request, call_next):
 async def audit_request(request: Request, call_next):
     started = perf_counter()
     response = await call_next(request)
+    if not _should_audit_request(request):
+        return response
     duration_ms = int((perf_counter() - started) * 1000)
     admin_context = getattr(request.state, "admin_context", None) or {}
     mobile_context = getattr(request.state, "mobile_context", None) or {}
@@ -196,6 +209,7 @@ def shutdown_background_services() -> None:
     stop_backup_scheduler()
     stop_notification_scheduler()
     stop_mobile_build_worker()
+    flush_audit_logs(force=True)
 
 
 @app.get("/")

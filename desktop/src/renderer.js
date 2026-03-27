@@ -81,6 +81,7 @@ let hls;
 let dailyViewersChart;
 let competitionPopularityChart;
 let dashboardPollIntervalId = null;
+let dashboardPollInFlight = false;
 const isMasterRole = () => String(state.session?.role || "").toLowerCase() === "master";
 const isClientRole = () => !isMasterRole();
 const mobileAppAlreadyGenerated = () => state.branding?.mobile_app_generated === true;
@@ -1624,12 +1625,56 @@ async function refreshMasterLive() {
   renderMasterLive();
 }
 
+async function refreshVisibleSectionData(section = state.activeSection) {
+  switch (section) {
+    case "analytics":
+      await refreshAnalytics();
+      return;
+    case "security":
+      await refreshSecurity();
+      return;
+    case "backups":
+      await refreshBackups();
+      return;
+    case "mobile_builder":
+      await refreshMobileBuilds();
+      if (isMasterRole()) {
+        await refreshApkManagement();
+      }
+      return;
+    case "platform_clients":
+      if (isMasterRole()) {
+        await refreshPlatformClients();
+      }
+      return;
+    case "dashboard":
+      await Promise.all([
+        refreshAnalytics().catch(() => {}),
+        refreshRuntimeStatus().catch(() => {}),
+        refreshUpdatesPanel().catch(() => {}),
+        isMasterRole() ? refreshMasterLive().catch(() => {}) : Promise.resolve(),
+      ]);
+      return;
+    default:
+      return;
+  }
+}
+
 async function refreshAll() {
   hydrateSettings();
   renderProviders();
   applyRoleAccess();
-  const jobs = [refreshTenantsAndBranding(), refreshMetadata(), refreshApprovedMatches(), refreshStreams(), refreshUsers(), refreshSecurity(), refreshBackups(), refreshRuntimeStatus(), refreshSetupStatus(), refreshAnalytics(), refreshUpdatesPanel(), refreshMobileBuilds(), refreshApkManagement(), isMasterRole() ? refreshMasterLive() : Promise.resolve()];
-  if (isMasterRole()) jobs.push(refreshPlatformClients());
+  const jobs = [
+    refreshTenantsAndBranding(),
+    refreshMetadata(),
+    refreshApprovedMatches(),
+    refreshStreams(),
+    refreshUsers(),
+    refreshSetupStatus(),
+    refreshRuntimeStatus(),
+    refreshUpdatesPanel(),
+    refreshVisibleSectionData(),
+  ];
   await Promise.all(jobs);
 }
 async function runUserAction(task, successMessage) {
@@ -2159,10 +2204,13 @@ window.desktopApi.onMasterLiveState((payload) => {
 });
 bootstrap().catch((error) => showToast(error.message, true));
 dashboardPollIntervalId = setInterval(() => {
-  refreshAnalytics().catch(() => {});
-  refreshSecurity().catch(() => {});
-  refreshBackups().catch(() => {});
-  refreshRuntimeStatus().catch(() => {});
-  refreshUpdatesPanel().catch(() => {});
-  refreshMobileBuilds().catch(() => {});
-}, 10000);
+  if (dashboardPollInFlight) {
+    return;
+  }
+  dashboardPollInFlight = true;
+  Promise.resolve(refreshVisibleSectionData())
+    .catch(() => {})
+    .finally(() => {
+      dashboardPollInFlight = false;
+    });
+}, 30000);
