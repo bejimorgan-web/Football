@@ -26,8 +26,8 @@ const String _devicePlatformKey = 'device_platform';
 const String _tenantIdStorageKey = 'tenant_id';
 const String _appVersion = '0.1.0';
 const String _manualBackendUrlKey = 'manual_backend_url';
-const String _bootstrapMasterWebBackendUrl = 'http://localhost:8000';
 const String _controlPanelConfigEndpoint = '/api/config';
+String get _bootstrapMasterWebBackendUrl => NetworkConfig.baseUrl;
 
 class _ControlPanelApiConfig {
   const _ControlPanelApiConfig({
@@ -1160,8 +1160,7 @@ class AppBootstrapPage extends StatefulWidget {
 }
 
 class _AppBootstrapPageState extends State<AppBootstrapPage> {
-  static const String _masterWebBackendUrl =
-      'http://127.0.0.1:8000';
+  String get _masterWebBackendUrl => NetworkConfig.baseUrl;
 
   final MobileApi _api = const MobileApi();
   late Future<AppSession> _sessionFuture;

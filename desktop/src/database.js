@@ -6,26 +6,8 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-const DEFAULT_DESKTOP_BACKEND_URL = "http://127.0.0.1:8000";
-const DEFAULT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8000";
-
-function forceLocalDevelopmentSettings(settings = {}) {
-  return {
-    ...(settings || {}),
-    backendUrl: DEFAULT_DESKTOP_BACKEND_URL,
-    apiBaseUrl: DEFAULT_PUBLIC_API_BASE_URL,
-    backendApi: {
-      url: DEFAULT_DESKTOP_BACKEND_URL,
-      apiToken: "",
-      connected: false,
-    },
-    publicApi: {
-      url: DEFAULT_PUBLIC_API_BASE_URL,
-      apiToken: "",
-      connected: false,
-    },
-  };
-}
+const DEFAULT_DESKTOP_BACKEND_URL = String(process.env.DESKTOP_API_URL || process.env.API_BASE_URL || "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
+const DEFAULT_PUBLIC_API_BASE_URL = DEFAULT_DESKTOP_BACKEND_URL;
 
 function loadDesktopConfig() {
   const configPath = path.join(__dirname, "..", "config.json");
@@ -122,8 +104,7 @@ class ProviderStore {
 
   async init() {
     await this.#ensureLoaded();
-    const current = forceLocalDevelopmentSettings(normalizeSettingsShape(this.state.settings || {}));
-    this.state.settings = normalizeSettingsShape(current);
+    this.state.settings = normalizeSettingsShape(this.state.settings || {});
     await this.#persist();
   }
 

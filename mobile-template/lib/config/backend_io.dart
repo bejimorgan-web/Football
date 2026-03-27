@@ -9,8 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_config.dart';
 
 const String _localhostBackendUrl = embeddedServerUrl;
-const String _defaultApiUrl = 'https://computatively-intelligent-arlena.ngrok-free.dev';
-const String _androidEmulatorBackendUrl = 'http://10.0.2.2:8000';
+const String _defaultApiUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://127.0.0.1:8000',
+);
+const String _androidEmulatorBackendUrl = _defaultApiUrl;
 const String _manualBackendUrlPreferenceKey = 'manual_backend_url';
 const String _detectedBackendUrlPreferenceKey = 'detected_backend_url';
 const String _resolverBackendUrlPreferenceKey = 'resolver_backend_url';
@@ -115,7 +118,7 @@ Future<String?> _resolveApiBaseUrlFromResolver(SharedPreferences prefs, String s
       return cachedUrl == null || cachedUrl.isEmpty ? null : _normalizeBackendUrl(cachedUrl);
     }
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final apiBaseUrl = _normalizeBackendUrl('${payload['apiBaseUrl'] ?? ''}');
+    final apiBaseUrl = _normalizeBackendUrl('${payload['backend_url'] ?? payload['backendUrl'] ?? payload['apiBaseUrl'] ?? ''}');
     if (apiBaseUrl.isEmpty) {
       return cachedUrl == null || cachedUrl.isEmpty ? null : _normalizeBackendUrl(cachedUrl);
     }

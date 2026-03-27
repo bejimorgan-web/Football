@@ -54,9 +54,6 @@ const state = {
 };
 
 const DEFAULT_API_URL = "http://127.0.0.1:8000";
-const LEGACY_PUBLIC_API_STORAGE_KEY = "public_api_url";
-const LEGACY_BACKEND_API_STORAGE_KEY = "backend_api_url";
-const LEGACY_API_TOKEN_STORAGE_KEY = "api_token";
 
 function isDevelopmentMode() {
   try {
@@ -68,16 +65,6 @@ function isDevelopmentMode() {
   }
 }
 
-function resetApiConfig() {
-  try {
-    window.localStorage?.removeItem(LEGACY_PUBLIC_API_STORAGE_KEY);
-    window.localStorage?.removeItem(LEGACY_BACKEND_API_STORAGE_KEY);
-    window.localStorage?.removeItem(LEGACY_API_TOKEN_STORAGE_KEY);
-  } catch (_) {
-    // Ignore storage access errors and keep the in-memory localhost fallback.
-  }
-}
-
 function forceResetConfig() {
   try {
     window.localStorage?.clear();
@@ -86,19 +73,9 @@ function forceResetConfig() {
   }
 }
 
-function getDefaultApiUrl() {
-  try {
-    const storedUrl = String(window.localStorage?.getItem(LEGACY_PUBLIC_API_STORAGE_KEY) || "").trim();
-    return storedUrl || DEFAULT_API_URL;
-  } catch (_) {
-    return DEFAULT_API_URL;
-  }
-}
-
 if (isDevelopmentMode()) {
   forceResetConfig();
 }
-resetApiConfig();
 
 let hls;
 let dailyViewersChart;
@@ -371,17 +348,19 @@ const isValidHttpUrl = (value) => {
   }
 };
 const endpointConfig = (kind) => {
-  const fallback = kind === "public"
-    ? { url: getDefaultApiUrl(), apiToken: "", connected: false }
-    : { url: DEFAULT_API_URL, apiToken: "", connected: false };
-  return { ...fallback, ...(kind === "public" ? state.settings.publicApi : state.settings.backendApi) };
+  const endpointState = kind === "public" ? state.settings.publicApi : state.settings.backendApi;
+  return {
+    url: String(endpointState?.url || "").trim() || DEFAULT_API_URL,
+    apiToken: String(endpointState?.apiToken || "").trim(),
+    connected: endpointState?.connected === true,
+  };
 };
 const previewApiConfig = () => endpointConfig("backend");
 const assetUrl = (url) => {
   const value = String(url || "").trim();
   if (!value) return "";
   if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
-  const backendBase = String(previewApiConfig().url || state.settings.backendUrl || "").trim().replace(/\/+$/, "");
+  const backendBase = String(previewApiConfig().url || "").trim().replace(/\/+$/, "");
   if (!backendBase) return value;
   return value.startsWith("/") ? `${backendBase}${value}` : `${backendBase}/${value}`;
 };
@@ -428,8 +407,7 @@ function showToast(message, isError = false) {
 }
 
 async function fetchBackendConnectivitySnapshot() {
-  const API_URL = DEFAULT_API_URL;
-  const backendUrl = String(previewApiConfig().url || state.settings.backendUrl || "").trim() || API_URL;
+  const backendUrl = String(previewApiConfig().url || "").trim() || DEFAULT_API_URL;
   const readJson = async (path) => {
     const response = await fetch(`${backendUrl}${path}`);
     if (!response.ok) {
@@ -1406,7 +1384,7 @@ function renderServerStatus() {
   }
   const rows = [
     ["Mode", runtime.mode || "idle"],
-    ["Backend URL", runtime.url || state.settings.backendUrl],
+    ["Backend URL", runtime.url || endpointConfig("backend").url],
     ["Reachable", runtime.reachable ? "Yes" : "No"],
     ["Managed Process", runtime.managed ? "Yes" : "No"],
     ["PID", runtime.pid || "-"],

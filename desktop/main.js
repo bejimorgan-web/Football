@@ -6,8 +6,8 @@ const path = require("path");
 
 const { ProviderStore } = require("./src/database");
 
-const DEFAULT_DESKTOP_BACKEND_URL = "http://127.0.0.1:8000";
-const DEFAULT_PUBLIC_API_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_DESKTOP_BACKEND_URL = String(process.env.DESKTOP_API_URL || process.env.API_BASE_URL || "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
+const DEFAULT_PUBLIC_API_BASE_URL = DEFAULT_DESKTOP_BACKEND_URL;
 
 let mainWindow = null;
 let platformClientsWindow = null;
@@ -142,7 +142,7 @@ function clearSession() {
 }
 
 function normalizeBackendUrl(rawUrl) {
-  const fallback = "http://127.0.0.1:8000";
+  const fallback = DEFAULT_DESKTOP_BACKEND_URL;
   return String(rawUrl || fallback).trim().replace(/\/+$/, "") || fallback;
 }
 
@@ -356,6 +356,10 @@ async function validateCurrentSession() {
 
   if (String(session.subscriptionStatus || "").toLowerCase() === "expired") {
     return { authenticated: false, route: "renewal" };
+  }
+
+  if (String(session.role || "").toLowerCase() === "master") {
+    return { authenticated: true, route: "dashboard" };
   }
 
   if (!String(session.licenseToken || "").trim()) {

@@ -1,3 +1,5 @@
+import logging
+import os
 from pathlib import Path
 from time import perf_counter
 
@@ -11,6 +13,7 @@ from pydantic import BaseModel
 from app.api_config import (
     build_public_api_config,
     ensure_api_config_storage,
+    get_runtime_backend_api_url,
     get_runtime_public_api_url,
     save_api_config,
 )
@@ -43,6 +46,27 @@ from app.storage import ASSETS_DIR, ensure_storage_files, load_config, log_audit
 from app.tenant_middleware import tenant_resolver
 from app.update_service import ensure_update_storage
 
+logger = logging.getLogger("football_iptv.api")
+
+
+def _cors_allowed_origins() -> list[str]:
+    raw = str(os.getenv("CORS_ALLOW_ORIGINS") or "").strip()
+    if raw:
+        origins = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+        if origins:
+            return origins
+    if is_development_mode():
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8000",
+        ]
+    return []
+
+
 app = FastAPI(title="Football IPTV API")
 DOWNLOADS_DIR = Path(__file__).resolve().parent / "downloads"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
@@ -57,10 +81,10 @@ ensure_static_logo_storage()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_allowed_origins(),
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*", "Authorization", "X-Api-Token", "X-Tenant-Id", "X-Device-Id", "X-Server-Id"],
-    expose_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-Api-Token", "X-Tenant-Id", "X-Device-Id", "X-Server-Id"],
+    expose_headers=["Content-Type"],
     max_age=86400,
 )
 app.middleware("http")(tenant_resolver)
@@ -92,17 +116,35 @@ app.mount("/cdn/branding", StaticFiles(directory=BRANDING_CDN_ROOT), name="brand
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled server error for %s %s", request.method, request.url.path, exc_info=exc)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc)},
+        content={"error": "Internal server error."},
     )
 
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f"Incoming: {request.url}")
-    response = await call_next(request)
-    print(f"Response: {response.status_code}")
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = int((perf_counter() - started) * 1000)
+        logger.exception(
+            "Request failed method=%s path=%s duration_ms=%s",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
+    duration_ms = int((perf_counter() - started) * 1000)
+    logger.info(
+        "Request completed method=%s path=%s status=%s duration_ms=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
     return response
 
 
@@ -179,39 +221,50 @@ class PublicApiConfigPayload(BaseModel):
 
 
 @app.get("/api/config")
-def api_config():
+def api_config(request: Request):
     payload = build_public_api_config()
-    public_api_url = "http://localhost:8000" if is_development_mode() else str(payload.get("apiBaseUrl") or get_runtime_public_api_url())
+    backend_api = payload.get("backend_api") if isinstance(payload.get("backend_api"), dict) else {}
+    public_api = payload.get("public_api") if isinstance(payload.get("public_api"), dict) else {}
+    configured_backend_api_url = str(backend_api.get("url") or get_runtime_backend_api_url()).strip()
+    configured_public_api_url = str(public_api.get("url") or payload.get("apiBaseUrl") or get_runtime_public_api_url()).strip()
+    request_public_api_url = str(request.base_url).rstrip("/")
+    if is_development_mode():
+        public_api_url = "http://localhost:8000"
+    elif not configured_public_api_url or "127.0.0.1" in configured_public_api_url or "localhost" in configured_public_api_url:
+        public_api_url = request_public_api_url or configured_public_api_url
+    else:
+        public_api_url = configured_public_api_url
+    backend_api_url = configured_backend_api_url or public_api_url
     payload.update({
         "backend_url": public_api_url,
+        "backendApiUrl": backend_api_url,
+        "backend_api_url": backend_api_url,
         "tenant_id": "master",
         "auth_required": False,
         "apiBaseUrl": public_api_url,
         "publicApiUrl": public_api_url,
         "public_api_url": public_api_url,
         "backend_api": {
-            "url": public_api_url,
-            "api_token": "",
-            "connected": False,
-            "token": "",
+            **backend_api,
+            "url": backend_api_url,
+            "token": str(backend_api.get("api_token") or backend_api.get("token") or ""),
         },
         "public_api": {
+            **public_api,
             "url": public_api_url,
-            "api_token": "",
-            "connected": False,
-            "token": "",
+            "token": str(public_api.get("api_token") or public_api.get("token") or ""),
         },
         "backendApi": {
-            "url": public_api_url,
-            "apiToken": "",
-            "connected": False,
-            "token": "",
+            **(payload.get("backendApi") if isinstance(payload.get("backendApi"), dict) else {}),
+            "url": backend_api_url,
+            "apiToken": str(backend_api.get("api_token") or backend_api.get("token") or ""),
+            "token": str(backend_api.get("api_token") or backend_api.get("token") or ""),
         },
         "publicApi": {
+            **(payload.get("publicApi") if isinstance(payload.get("publicApi"), dict) else {}),
             "url": public_api_url,
-            "apiToken": "",
-            "connected": False,
-            "token": "",
+            "apiToken": str(public_api.get("api_token") or public_api.get("token") or ""),
+            "token": str(public_api.get("api_token") or public_api.get("token") or ""),
         },
     })
     return payload
