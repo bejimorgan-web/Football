@@ -12,6 +12,18 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+import requests
+
+from app.mobile_build_artifacts import resolve_mobile_build_download, store_mobile_build_artifact
+from app.mobile_build_store import (
+    append_mobile_build_log,
+    claim_next_mobile_build_job,
+    create_mobile_build_job,
+    ensure_mobile_build_store,
+    get_mobile_build_job,
+    list_mobile_build_jobs,
+    update_mobile_build_job,
+)
 from app.storage import (
     get_admin_by_id,
     get_admin_storage_path,
@@ -26,10 +38,13 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 PRIMARY_MOBILE_PROJECT_DIR = PROJECT_ROOT / "mobile"
 GENERATED_APPS_DIR = BACKEND_ROOT / "generated_apps"
 BUILD_QUEUE_DIR = BACKEND_ROOT / "build_queue"
-BUILD_QUEUE_JOBS_PATH = BUILD_QUEUE_DIR / "jobs.json"
 BUILD_WORKSPACES_DIR = BUILD_QUEUE_DIR / "workspaces"
 LOGS_DIR = BACKEND_ROOT / "logs"
 BUILD_LOGS_DIR = LOGS_DIR / "mobile-builder"
+DOCKER_DIR = BACKEND_ROOT / "docker"
+DOCKERFILE_PATH = DOCKER_DIR / "flutter-android-builder.Dockerfile"
+MOBILE_BUILDER_BACKEND = os.environ.get("MOBILE_BUILDER_BACKEND", "docker").strip().lower() or "docker"
+DOCKER_IMAGE_NAME = os.environ.get("MOBILE_BUILDER_DOCKER_IMAGE", "football-streaming-mobile-builder:latest").strip() or "football-streaming-mobile-builder:latest"
 
 MAX_BUILDS_PER_DAY = 5
 JOB_LOCK = threading.Lock()
@@ -59,21 +74,35 @@ def utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _env_flag_enabled(name: str, default: bool) -> bool:
+    raw_value = os.environ.get(name)
+    if raw_value is None or str(raw_value).strip() == "":
+        return default
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def mobile_build_worker_enabled() -> bool:
+    if "MOBILE_BUILD_WORKER_ENABLED" in os.environ and str(os.environ.get("MOBILE_BUILD_WORKER_ENABLED") or "").strip() != "":
+        return _env_flag_enabled("MOBILE_BUILD_WORKER_ENABLED", default=False)
+    render_managed_runtime = any(
+        str(os.environ.get(name) or "").strip()
+        for name in ("RENDER", "RENDER_EXTERNAL_URL", "RENDER_SERVICE_ID")
+    )
+    return not render_managed_runtime
+
+
 def ensure_mobile_builder_storage() -> None:
+    ensure_mobile_build_store()
     GENERATED_APPS_DIR.mkdir(parents=True, exist_ok=True)
     BUILD_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     BUILD_WORKSPACES_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     BUILD_LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    if not BUILD_QUEUE_JOBS_PATH.exists():
-        _write_json(BUILD_QUEUE_JOBS_PATH, [])
 
 
 def _read_build_log(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except Exception:
-        return ""
+    job = get_mobile_build_job(path.stem)
+    return str(job.get("logs") or "") if job is not None else ""
 
 
 def start_mobile_build_worker() -> None:
@@ -120,64 +149,50 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _load_jobs() -> List[Dict[str, object]]:
     ensure_mobile_builder_storage()
-    payload = _read_json(BUILD_QUEUE_JOBS_PATH, [])
-    return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+    return list_mobile_build_jobs()
 
 
 def _save_jobs(jobs: List[Dict[str, object]]) -> None:
-    _write_json(BUILD_QUEUE_JOBS_PATH, jobs)
+    raise RuntimeError("_save_jobs is no longer supported; mobile builds are stored in SQLite.")
 
 
 def _recover_interrupted_jobs() -> None:
     recovered: List[Dict[str, object]] = []
-    with JOB_LOCK:
-        jobs = _load_jobs()
-        changed = False
-        now = utc_now_iso()
-        for item in jobs:
-            status = str(item.get("status") or "").strip().lower()
-            if status == "building":
-                item.update(
+    now = utc_now_iso()
+    for item in _load_jobs():
+        status = str(item.get("status") or "").strip().lower()
+        if status == "building":
+            recovered.append(
+                update_mobile_build_job(
+                    str(item.get("build_id") or ""),
                     {
                         "status": "failed",
                         "progress": 0,
                         "error": str(item.get("error") or "Build interrupted before completion."),
                         "updated_at": now,
                         "completed_at": now,
-                    }
+                    },
                 )
-                recovered.append(dict(item))
-                changed = True
-            elif status == "cancelling":
-                item.update(
+            )
+        elif status == "cancelling":
+            recovered.append(
+                update_mobile_build_job(
+                    str(item.get("build_id") or ""),
                     {
                         "status": "cancelled",
                         "progress": 0,
                         "error": str(item.get("error") or "Build cancelled while the worker was offline."),
                         "updated_at": now,
                         "completed_at": now,
-                    }
+                    },
                 )
-                recovered.append(dict(item))
-                changed = True
-        if changed:
-            _save_jobs(jobs)
+            )
     for item in recovered:
         _sync_version_history_entry(item)
 
 
 def _update_job(build_id: str, patch: Dict[str, object]) -> Dict[str, object]:
-    with JOB_LOCK:
-        jobs = _load_jobs()
-        updated = None
-        for item in jobs:
-            if str(item.get("build_id") or "") == build_id:
-                item.update(patch)
-                updated = dict(item)
-                break
-        if updated is None:
-            raise ValueError("Build job not found.")
-        _save_jobs(jobs)
+    updated = update_mobile_build_job(build_id, patch)
     _sync_version_history_entry(updated)
     return updated
 
@@ -191,6 +206,9 @@ def _clear_build_state(build_id: str, *, status: str, error: str) -> Dict[str, o
             "error": error,
             "artifact_name": "",
             "artifact_path": "",
+            "artifact_storage": "",
+            "artifact_key": "",
+            "artifact_url": "",
             "updated_at": utc_now_iso(),
             "completed_at": utc_now_iso(),
         },
@@ -198,14 +216,7 @@ def _clear_build_state(build_id: str, *, status: str, error: str) -> Dict[str, o
 
 
 def _next_queued_job() -> Optional[Dict[str, object]]:
-    with JOB_LOCK:
-        jobs = _load_jobs()
-        queued = [
-            item for item in jobs
-            if str(item.get("status") or "") == "queued"
-        ]
-        queued.sort(key=lambda item: str(item.get("created_at") or ""))
-        return dict(queued[0]) if queued else None
+    return claim_next_mobile_build_job("embedded-worker", updated_at=utc_now_iso())
 
 
 def _admin_versions_path(admin_id: str) -> Path:
@@ -297,7 +308,13 @@ def _read_java_properties(path: Path) -> Dict[str, str]:
     return result
 
 
+def _docker_backend_enabled() -> bool:
+    return MOBILE_BUILDER_BACKEND == "docker"
+
+
 def _resolve_flutter_root() -> str:
+    if _docker_backend_enabled():
+        return "/opt/flutter"
     candidates = []
 
     flutter_root = os.environ.get("FLUTTER_ROOT", "").strip()
@@ -326,6 +343,8 @@ def _resolve_flutter_root() -> str:
 
 
 def _resolve_flutter_executable() -> str:
+    if _docker_backend_enabled():
+        return "/opt/flutter/bin/flutter"
     flutter_root = Path(_resolve_flutter_root())
     flutter_bat = flutter_root / "bin" / "flutter.bat"
     if flutter_bat.exists():
@@ -337,6 +356,11 @@ def _resolve_flutter_executable() -> str:
 
 
 def _ensure_flutter_available(log_path: Optional[Path] = None) -> str:
+    if _docker_backend_enabled():
+        flutter_executable = _resolve_flutter_executable()
+        if log_path is not None:
+            _log(log_path, f"Skipping host Flutter validation because MOBILE_BUILDER_BACKEND={MOBILE_BUILDER_BACKEND}")
+        return flutter_executable
     try:
         flutter_executable = _resolve_flutter_executable()
     except RuntimeError as exc:
@@ -385,6 +409,11 @@ def _resolve_android_sdk_dir() -> str:
 
 
 def _ensure_android_sdk_available(log_path: Optional[Path] = None) -> str:
+    if _docker_backend_enabled():
+        android_sdk_dir = "/opt/android-sdk"
+        if log_path is not None:
+            _log(log_path, f"Skipping host Android SDK validation because MOBILE_BUILDER_BACKEND={MOBILE_BUILDER_BACKEND}")
+        return android_sdk_dir
     android_sdk_dir = _resolve_android_sdk_dir()
     if not android_sdk_dir:
         raise RuntimeError(
@@ -409,6 +438,78 @@ def _ensure_android_sdk_available(log_path: Optional[Path] = None) -> str:
     if log_path is not None:
         _log(log_path, f"Verified Android SDK availability via {sdk_path}")
     return str(sdk_path)
+
+
+def _resolve_docker_executable() -> str:
+    docker_binary = os.environ.get("DOCKER_BIN", "").strip()
+    if docker_binary:
+        return docker_binary
+    discovered = shutil.which("docker")
+    if discovered:
+        return discovered
+    raise RuntimeError(
+        "Docker is required before running containerized APK builds. "
+        "Install Docker and ensure the docker CLI is available."
+    )
+
+
+def _ensure_docker_available(log_path: Optional[Path] = None) -> str:
+    docker_executable = _resolve_docker_executable()
+    try:
+        subprocess.run(
+            [docker_executable, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=False,
+            check=True,
+            timeout=30,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "Docker CLI is not available in the build environment. "
+            "Install Docker before generating APKs."
+        ) from exc
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise RuntimeError(
+            "Docker was found but could not be executed. "
+            "Verify Docker is installed correctly and the daemon is running."
+        ) from exc
+    if log_path is not None:
+        _log(log_path, f"Verified Docker availability via {docker_executable}")
+    return docker_executable
+
+
+def _ensure_docker_build_image(build_id: str, log_path: Path) -> str:
+    docker_executable = _ensure_docker_available(log_path)
+    if not DOCKERFILE_PATH.exists():
+        raise RuntimeError(f"Docker build image definition is missing: {DOCKERFILE_PATH}")
+    inspect = subprocess.run(
+        [docker_executable, "image", "inspect", DOCKER_IMAGE_NAME],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        shell=False,
+    )
+    if inspect.returncode == 0:
+        _log(log_path, f"Using Docker image {DOCKER_IMAGE_NAME}")
+        return docker_executable
+    _log(log_path, f"Docker image {DOCKER_IMAGE_NAME} not found locally. Building it now.")
+    _run_logged_command(
+        build_id,
+        [
+            docker_executable,
+            "build",
+            "-f",
+            str(DOCKERFILE_PATH),
+            "-t",
+            DOCKER_IMAGE_NAME,
+            str(PROJECT_ROOT),
+        ],
+        PROJECT_ROOT,
+        log_path,
+    )
+    return docker_executable
 
 
 def _pubspec_name(package_name: str) -> str:
@@ -533,10 +634,7 @@ def queue_mobile_build(admin_id: str) -> Dict[str, object]:
         "error": "",
         "log_path": str((BUILD_LOGS_DIR / f"{build_id}.log").resolve()),
     }
-    with JOB_LOCK:
-        jobs = _load_jobs()
-        jobs.append(job)
-        _save_jobs(jobs)
+    create_mobile_build_job(job)
     _sync_version_history_entry(job)
     JOB_EVENT.set()
     return job
@@ -549,7 +647,7 @@ def list_build_history(admin_id: str) -> List[Dict[str, object]]:
 
 
 def get_build(admin_id: str, build_id: str) -> Dict[str, object]:
-    job = next((item for item in _load_jobs() if str(item.get("build_id") or "") == build_id), None)
+    job = get_mobile_build_job(build_id)
     if job is None:
         raise ValueError("Build job not found.")
     if str(job.get("admin_id") or "") != admin_id:
@@ -559,12 +657,84 @@ def get_build(admin_id: str, build_id: str) -> Dict[str, object]:
 
 def get_build_download_path(admin_id: str, build_id: str) -> Path:
     job = get_build(admin_id, build_id)
+    details = resolve_mobile_build_download(job)
+    if str(details.get("type") or "") != "local":
+        raise ValueError("Build artifact is not stored on the local filesystem.")
+    return Path(str(details.get("artifact_path") or ""))
+
+
+def get_build_download_details(admin_id: str, build_id: str) -> Dict[str, str]:
+    job = get_build(admin_id, build_id)
     if str(job.get("status") or "") != "completed":
         raise ValueError("Build is not completed yet.")
-    artifact_path = Path(str(job.get("artifact_path") or ""))
-    if not artifact_path.exists():
-        raise ValueError("Generated APK file is missing.")
-    return artifact_path
+    return resolve_mobile_build_download(job)
+
+
+def claim_next_build_for_worker(worker_id: str) -> Optional[Dict[str, object]]:
+    return claim_next_mobile_build_job(worker_id, updated_at=utc_now_iso())
+
+
+def get_build_for_worker(build_id: str) -> Dict[str, object]:
+    job = get_mobile_build_job(build_id)
+    if job is None:
+        raise ValueError("Build job not found.")
+    return job
+
+
+def append_worker_build_log(build_id: str, message: str) -> Dict[str, object]:
+    append_mobile_build_log(build_id, f"{utc_now_iso()} {message.rstrip()}\n")
+    return get_build_for_worker(build_id)
+
+
+def update_build_from_worker(build_id: str, patch: Dict[str, object]) -> Dict[str, object]:
+    normalized_patch = {key: value for key, value in patch.items()}
+    if not normalized_patch:
+        return get_build_for_worker(build_id)
+    normalized_patch["updated_at"] = utc_now_iso()
+    return _update_job(build_id, normalized_patch)
+
+
+def complete_build_from_worker(build_id: str, artifact: Dict[str, str]) -> Dict[str, object]:
+    job = get_build_for_worker(build_id)
+    artifact_name = str(artifact.get("artifact_name") or "")
+    updated = _update_job(
+        build_id,
+        {
+            "status": "completed",
+            "progress": 100,
+            "artifact_name": artifact_name,
+            "artifact_path": str(artifact.get("artifact_path") or ""),
+            "artifact_storage": str(artifact.get("artifact_storage") or "local"),
+            "artifact_key": str(artifact.get("artifact_key") or ""),
+            "artifact_url": str(artifact.get("artifact_url") or ""),
+            "updated_at": utc_now_iso(),
+            "completed_at": utc_now_iso(),
+            "error": "",
+        },
+    )
+    update_tenant_mobile_app_status(
+        str(job.get("tenant_id") or ""),
+        mobile_app_generated=True,
+        mobile_app_package_id=str(job.get("package_name") or ""),
+        mobile_app_created_at=utc_now_iso(),
+    )
+    save_mobile_app_record(
+        tenant_id=str(job.get("tenant_id") or ""),
+        package_id=str(job.get("package_name") or ""),
+        app_name=str(job.get("app_name") or ""),
+        logo_url=str(job.get("logo_file") or ""),
+        theme_color=str(job.get("primary_color") or ""),
+        generated_at=utc_now_iso(),
+        artifact_name=artifact_name,
+        build_id=build_id,
+    )
+    return updated
+
+
+def fail_build_from_worker(build_id: str, error: str, *, cancelled: bool = False) -> Dict[str, object]:
+    if cancelled:
+        return _clear_build_state(build_id, status="cancelled", error=error)
+    return _clear_build_state(build_id, status="failed", error=error)
 
 
 def get_build_status(admin_id: str, build_id: str) -> Dict[str, object]:
@@ -619,7 +789,7 @@ def cancel_mobile_build(admin_id: str, build_id: str) -> Dict[str, object]:
 
 def _is_cancellation_requested(build_id: str) -> bool:
     try:
-        job = next((item for item in _load_jobs() if str(item.get("build_id") or "") == build_id), None)
+        job = get_mobile_build_job(build_id)
     except Exception:
         job = None
     if job is None:
@@ -632,56 +802,39 @@ def _process_job(job: Dict[str, object]) -> None:
     admin_id = str(job.get("admin_id") or "")
     log_path = BUILD_LOGS_DIR / f"{build_id}.log"
     project_dir = PRIMARY_MOBILE_PROJECT_DIR
-    staged_files: Optional[Dict[Path, Optional[bytes]]] = None
     try:
         _update_job(build_id, {"status": "building", "progress": 15, "updated_at": utc_now_iso(), "error": ""})
         _log(log_path, f"Starting build {build_id} for admin {admin_id}")
         _log(log_path, f"Working directory: {project_dir}")
-        flutter_executable = _ensure_flutter_available(log_path)
-        _log(log_path, f"Flutter executable: {flutter_executable}")
-        android_sdk_dir = _ensure_android_sdk_available(log_path)
-        _log(log_path, f"Android SDK directory: {android_sdk_dir}")
         if not project_dir.exists():
             raise RuntimeError(f"Mobile project directory not found: {project_dir}")
+        if not _docker_backend_enabled():
+            raise RuntimeError(
+                f"Unsupported mobile builder backend '{MOBILE_BUILDER_BACKEND}'. "
+                "Set MOBILE_BUILDER_BACKEND=docker."
+            )
         branding = _resolve_branding(admin_id)
-        staged_files = _stage_mobile_project(project_dir, branding, str(job.get("version") or "1.0.0"), log_path)
-        _update_job(build_id, {"progress": 30, "updated_at": utc_now_iso()})
-        _run_flutter_command(
-            build_id,
-            ["flutter", "pub", "get"],
-            project_dir,
-            log_path,
-        )
-        _update_job(build_id, {"progress": 45, "updated_at": utc_now_iso()})
-        _run_flutter_command(
-            build_id,
-            ["flutter", "clean"],
-            project_dir,
-            log_path,
-        )
-        _update_job(build_id, {"progress": 65, "updated_at": utc_now_iso()})
-        _run_flutter_command(
-            build_id,
-            ["flutter", "build", "apk", "--release"],
-            project_dir,
-            log_path,
+        _update_job(build_id, {"progress": 25, "updated_at": utc_now_iso()})
+        build_result = build_tenant_apk_in_docker(
+            build_id=build_id,
+            tenant_data=branding,
+            version=str(job.get("version") or "1.0.0"),
+            admin_id=admin_id,
+            log_path=log_path,
         )
         _update_job(build_id, {"progress": 90, "updated_at": utc_now_iso()})
-        source_apk = project_dir / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
-        if not source_apk.exists():
-            raise RuntimeError("Flutter build completed but app-release.apk was not found.")
-        tenant_dir = GENERATED_APPS_DIR / admin_id
-        tenant_dir.mkdir(parents=True, exist_ok=True)
-        artifact_name = f"{_slugify_filename(str(job.get('app_name') or 'App'))}-{job.get('version')}.apk"
-        target_path = tenant_dir / artifact_name
-        shutil.copy2(source_apk, target_path)
+        artifact_name = str(build_result.get("artifact_name") or "")
+        artifact_label = str(build_result.get("artifact_path") or build_result.get("artifact_key") or artifact_name)
         _update_job(
             build_id,
             {
                 "status": "completed",
                 "progress": 100,
                 "artifact_name": artifact_name,
-                "artifact_path": str(target_path.resolve()),
+                "artifact_path": str(build_result.get("artifact_path") or ""),
+                "artifact_storage": str(build_result.get("artifact_storage") or "local"),
+                "artifact_key": str(build_result.get("artifact_key") or ""),
+                "artifact_url": str(build_result.get("artifact_url") or ""),
                 "updated_at": utc_now_iso(),
                 "completed_at": utc_now_iso(),
             },
@@ -702,19 +855,24 @@ def _process_job(job: Dict[str, object]) -> None:
             artifact_name=artifact_name,
             build_id=build_id,
         )
-        _log(log_path, f"Build completed: {target_path}")
+        _log(log_path, f"Build completed: {artifact_label}")
     except BuildCancelledError as exc:
         _clear_build_state(build_id, status="cancelled", error=str(exc))
         _log(log_path, f"Build cancelled: {exc}")
     except Exception as exc:
         _clear_build_state(build_id, status="failed", error=str(exc))
         _log(log_path, f"Build failed: {exc}")
-    finally:
-        if staged_files is not None:
-            _restore_staged_files(staged_files, log_path)
 
 
-def _stage_mobile_project(project_dir: Path, branding: Dict[str, object], version: str, log_path: Path) -> Dict[Path, Optional[bytes]]:
+def _stage_mobile_project(
+    project_dir: Path,
+    branding: Dict[str, object],
+    version: str,
+    log_path: Path,
+    *,
+    flutter_root_override: Optional[str] = None,
+    android_sdk_dir_override: Optional[str] = None,
+) -> Dict[Path, Optional[bytes]]:
     version_code = str(_version_code(version))
     package_name = str(branding["package_name"])
     app_name = str(branding["app_name"])
@@ -758,18 +916,42 @@ def _stage_mobile_project(project_dir: Path, branding: Dict[str, object], versio
     _write_pubspec_assets(pubspec_path, log_path)
     _write_main_activity_package(source_activity, target_activity, package_name, log_path)
 
-    flutter_root = _resolve_flutter_root()
-    android_sdk_dir = _resolve_android_sdk_dir()
-    properties_lines = [f"flutter.sdk={flutter_root.replace(chr(92), chr(47))}"]
+    flutter_root = str(flutter_root_override or _resolve_flutter_root())
+    android_sdk_dir = str(android_sdk_dir_override or _resolve_android_sdk_dir())
+    properties_lines: List[str] = []
     if android_sdk_dir:
-        properties_lines.insert(0, f"sdk.dir={android_sdk_dir.replace(chr(92), chr(47))}")
+        properties_lines.append(f"sdk.dir={android_sdk_dir.replace(chr(92), chr(47))}")
         _log(log_path, f"Configured sdk.dir from {android_sdk_dir}")
-    local_properties.write_text("\n".join(properties_lines) + "\n", encoding="utf-8")
-    _log(log_path, f"Configured flutter.sdk from {flutter_root}")
+    if flutter_root:
+        properties_lines.append(f"flutter.sdk={flutter_root.replace(chr(92), chr(47))}")
+        _log(log_path, f"Configured flutter.sdk from {flutter_root}")
+    if properties_lines:
+        local_properties.write_text("\n".join(properties_lines) + "\n", encoding="utf-8")
 
     _copy_branding_assets(project_dir, branding, log_path)
     _replace_launcher_icons(project_dir, str(branding.get("tenant_id") or ""), str(branding.get("logo_file") or ""), log_path)
     return snapshots
+
+
+def _prepare_build_workspace(build_id: str, tenant_data: Dict[str, object], version: str, log_path: Path) -> Path:
+    if not PRIMARY_MOBILE_PROJECT_DIR.exists():
+        raise RuntimeError(f"Mobile project directory not found: {PRIMARY_MOBILE_PROJECT_DIR}")
+    workspace_root = BUILD_WORKSPACES_DIR / build_id
+    if workspace_root.exists():
+        shutil.rmtree(workspace_root)
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    project_dir = workspace_root / "mobile"
+    shutil.copytree(PRIMARY_MOBILE_PROJECT_DIR, project_dir)
+    _log(log_path, f"Copied mobile project into Docker workspace {project_dir}")
+    _stage_mobile_project(
+        project_dir,
+        tenant_data,
+        version,
+        log_path,
+        flutter_root_override="/opt/flutter",
+        android_sdk_dir_override="/opt/android-sdk",
+    )
+    return project_dir
 
 
 def _snapshot_files(paths: List[Path]) -> Dict[Path, Optional[bytes]]:
@@ -894,6 +1076,33 @@ def _tenant_branding_asset_path(tenant_id: str, filename: str) -> Path:
     return BACKEND_ROOT / "storage" / "branding" / str(tenant_id or "").strip() / filename
 
 
+def _remote_branding_base_url() -> str:
+    return (
+        str(os.environ.get("MOBILE_BUILD_BRANDING_BASE_URL") or os.environ.get("MOBILE_BUILD_WORKER_API_URL") or "")
+        .strip()
+        .rstrip("/")
+    )
+
+
+def _download_remote_branding_asset(tenant_id: str, filename: str, destination: Path, log_path: Path) -> bool:
+    base_url = _remote_branding_base_url()
+    if not base_url:
+        return False
+    url = f"{base_url}/branding/{str(tenant_id or '').strip()}/{filename}"
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code != 200:
+            _log(log_path, f"Remote branding asset unavailable at {url} (status={response.status_code}).")
+            return False
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(response.content)
+        _log(log_path, f"Downloaded branding asset from {url}")
+        return True
+    except requests.RequestException as exc:
+        _log(log_path, f"Could not download branding asset from {url}: {exc}")
+        return False
+
+
 def _copy_branding_assets(workspace_dir: Path, branding: Dict[str, object], log_path: Path) -> None:
     assets_dir = workspace_dir / "assets" / "branding"
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -906,6 +1115,8 @@ def _copy_branding_assets(workspace_dir: Path, branding: Dict[str, object], log_
     for target_name, source_path in asset_map.items():
         if source_path.exists():
             shutil.copy2(source_path, assets_dir / target_name)
+        elif _download_remote_branding_asset(tenant_id, source_path.name, assets_dir / target_name, log_path):
+            continue
         else:
             _log(log_path, f"Branding asset {source_path} not found. Skipping {target_name}.")
 
@@ -915,6 +1126,11 @@ def _replace_launcher_icons(workspace_dir: Path, tenant_id: str, logo_path: str,
     if generated_icon.exists():
         for icon_path in workspace_dir.glob("android/app/src/main/res/mipmap-*/ic_launcher.png"):
             shutil.copy2(generated_icon, icon_path)
+        return
+    workspace_icon = workspace_dir / "assets" / "branding" / "app_icon.png"
+    if workspace_icon.exists():
+        for icon_path in workspace_dir.glob("android/app/src/main/res/mipmap-*/ic_launcher.png"):
+            shutil.copy2(workspace_icon, icon_path)
         return
     if not logo_path or not logo_path.startswith("/assets/"):
         _log(log_path, "No branding logo file found. Keeping default launcher icon.")
@@ -927,6 +1143,83 @@ def _replace_launcher_icons(workspace_dir: Path, tenant_id: str, logo_path: str,
         shutil.copy2(source, icon_path)
 
 
+def build_tenant_apk_in_docker(
+    *,
+    build_id: str,
+    tenant_data: Dict[str, object],
+    version: str,
+    admin_id: str,
+    log_path: Path,
+) -> Dict[str, str]:
+    if not _docker_backend_enabled():
+        raise RuntimeError(
+            f"Unsupported mobile builder backend '{MOBILE_BUILDER_BACKEND}'. "
+            "Set MOBILE_BUILDER_BACKEND=docker."
+        )
+    docker_executable = _ensure_docker_build_image(build_id, log_path)
+    workspace_project_dir = _prepare_build_workspace(build_id, tenant_data, version, log_path)
+    workspace_root = workspace_project_dir.parent
+    container_project_dir = "/workspace/mobile"
+    flutter_executable = "/opt/flutter/bin/flutter"
+    tenant_id = str(tenant_data.get("tenant_id") or admin_id).strip() or admin_id
+    _log(
+        log_path,
+        f"[Docker] Build started (image={DOCKER_IMAGE_NAME}, workspace={workspace_root.resolve()}, output={GENERATED_APPS_DIR / tenant_id})",
+    )
+    docker_base_command = [
+        docker_executable,
+        "run",
+        "--rm",
+        "-v",
+        f"{workspace_root.resolve()}:/workspace",
+        "-w",
+        container_project_dir,
+        "-e",
+        "CI=true",
+        "-e",
+        "FLUTTER_SUPPRESS_ANALYTICS=true",
+        "-e",
+        "PUB_ENVIRONMENT=flutter_cli:mobile_builder_docker",
+        DOCKER_IMAGE_NAME,
+    ]
+
+    _run_logged_command(
+        build_id,
+        [*docker_base_command, flutter_executable, "pub", "get"],
+        workspace_project_dir,
+        log_path,
+    )
+    _run_logged_command(
+        build_id,
+        [*docker_base_command, flutter_executable, "clean"],
+        workspace_project_dir,
+        log_path,
+    )
+    _run_logged_command(
+        build_id,
+        [*docker_base_command, flutter_executable, "build", "apk", "--release"],
+        workspace_project_dir,
+        log_path,
+    )
+
+    source_apk = workspace_project_dir / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
+    if not source_apk.exists():
+        raise RuntimeError("Docker Flutter build completed but app-release.apk was not found.")
+
+    artifact_name = f"{_slugify_filename(str(tenant_data.get('app_name') or 'App'))}-{version}.apk"
+    stored_artifact = store_mobile_build_artifact(
+        tenant_id=tenant_id,
+        artifact_name=artifact_name,
+        source_apk=source_apk,
+    )
+    _log(log_path, f"Stored tenant APK at {stored_artifact.get('artifact_path') or stored_artifact.get('artifact_key')}")
+    _log(log_path, f"[Docker] Build finished (artifact={stored_artifact.get('artifact_path') or stored_artifact.get('artifact_key')})")
+    return {
+        **stored_artifact,
+        "workspace_apk_path": str(source_apk.resolve()),
+    }
+
+
 def _powershell_quote(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
@@ -937,10 +1230,11 @@ def _run_flutter_command(
     cwd: Path,
     log_path: Path,
 ) -> None:
+    if _docker_backend_enabled():
+        raise RuntimeError("Local Flutter execution is disabled. MOBILE_BUILDER_BACKEND=docker requires Docker builds.")
     resolved_executable = _resolve_flutter_executable()
     android_sdk_dir = _resolve_android_sdk_dir()
     resolved_command = [resolved_executable, *command[1:]]
-    _log(log_path, f"Running command: {_format_command_for_log(resolved_command)}")
     env = os.environ.copy()
     env.setdefault("FLUTTER_ROOT", _resolve_flutter_root())
     env.setdefault("CI", "true")
@@ -950,18 +1244,31 @@ def _run_flutter_command(
         env.setdefault("ANDROID_SDK_ROOT", android_sdk_dir)
         env.setdefault("ANDROID_HOME", android_sdk_dir)
     try:
-        process = subprocess.Popen(
-            resolved_command,
-            cwd=str(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            shell=False,
-            bufsize=1,
-            env=env,
-        )
+        _run_logged_command(build_id, resolved_command, cwd, log_path, env=env)
+        return
     except FileNotFoundError as exc:
         raise RuntimeError("Flutter executable could not be started.") from exc
+
+
+def _run_logged_command(
+    build_id: str,
+    command: List[str],
+    cwd: Path,
+    log_path: Path,
+    *,
+    env: Optional[Dict[str, str]] = None,
+) -> None:
+    _log(log_path, f"Running command: {_format_command_for_log(command)}")
+    process = subprocess.Popen(
+        command,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        shell=False,
+        bufsize=1,
+        env=env,
+    )
     with ACTIVE_PROCESSES_LOCK:
         ACTIVE_PROCESSES[build_id] = process
     reader_errors: List[Exception] = []
@@ -1015,13 +1322,15 @@ def _run_flutter_command(
     if cancelled or _is_cancellation_requested(build_id):
         raise BuildCancelledError("Build cancelled by user.")
     if process.returncode != 0:
-        raise RuntimeError(f"{_format_command_for_log(resolved_command)} failed with exit code {process.returncode}.")
+        raise RuntimeError(f"{_format_command_for_log(command)} failed with exit code {process.returncode}.")
 
 
 def _log(path: Path, message: str) -> None:
+    line = f"{utc_now_iso()} {message.rstrip()}\n"
+    append_mobile_build_log(path.stem, line)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"{utc_now_iso()} {message.rstrip()}\n")
+        handle.write(line)
 
 
 def _format_command_for_log(command: List[str]) -> str:

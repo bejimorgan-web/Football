@@ -1942,5 +1942,113 @@
     "cloud_location": null,
     "removed_backups": [],
     "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "b098ec1a46d142d188e0eee09250c662",
+    "started_at": "2026-03-26T21:35:56.330533+00:00",
+    "finished_at": "2026-03-26T21:35:56.330557+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "bb83c67cff5b4fa49aa32d06501e84f6",
+    "started_at": "2026-03-26T21:43:16.303753+00:00",
+    "finished_at": "2026-03-26T21:43:16.303791+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "1a6ab6f21ba6433fa70c0e37ebdef6f3",
+    "started_at": "2026-03-26T21:49:25.826676+00:00",
+    "finished_at": "2026-03-26T21:49:25.826687+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "e5cc6556eadc443e93e10b1acaac5545",
+    "started_at": "2026-03-27T23:04:38.495959+00:00",
+    "finished_at": "2026-03-27T23:04:38.495971+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "4feb5e85b3b2440f8eaf21e9ff67ce80",
+    "started_at": "2026-03-27T23:38:03.461917+00:00",
+    "finished_at": "2026-03-27T23:38:03.461927+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "e0d15d284e6246fbaa75bd63b59913c4",
+    "started_at": "2026-03-27T23:46:07.091616+00:00",
+    "finished_at": "2026-03-27T23:46:07.091627+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "0f225b92ca3e430ebc06d704fb222faa",
+    "started_at": "2026-03-28T00:22:46.785129+00:00",
+    "finished_at": "2026-03-28T00:22:46.785145+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "c52d47eb851a47ac9c9a43faf71e767f",
+    "started_at": "2026-03-28T00:22:58.517094+00:00",
+    "finished_at": "2026-03-28T00:22:58.517109+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "c09fb3c4854c4a4abbc27b1666e13339",
+    "started_at": "2026-03-28T01:13:33.053124+00:00",
+    "finished_at": "2026-03-28T01:13:33.053136+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
   }
 ]

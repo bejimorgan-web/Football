@@ -1,0 +1,38 @@
+[
+  {
+    "admin_id": "29e907d7b64a4df68ff49aae7951fac7",
+    "tenant_id": "master",
+    "name": "Master Admin",
+    "email": "master@example.com",
+    "plan_id": "unlimited",
+    "password_salt": "747a981a999f617e786d86a420422497",
+    "password_hash": "7ce3aadef69534c42d2f787cd3d9317449c41eb531433277548c7689baa3e710",
+    "subscription_started_at": "2026-03-27T10:02:26.614315+00:00",
+    "subscription_start_date": "2026-03-27T10:02:26.614315+00:00",
+    "subscription_end": "",
+    "subscription_end_date": "",
+    "subscription_status": "active",
+    "status": "active",
+    "role": "master",
+    "trial_days": 0,
+    "device_id": "desktop-master",
+    "device_transfer_available_at": "",
+    "server_reset_available_at": "2026-03-28T10:02:27.596657+00:00",
+    "payment_provider": "",
+    "payment_reference": "",
+    "last_payment_at": "2026-03-27T10:02:26.614315+00:00",
+    "branding_info": {
+      "app_name": "Master Admin",
+      "logo_url": ""
+    },
+    "api_token_hash": "2a58f6619797aa11fabd4ab23ecf8dc0db0b6c196843d67d94828c28172a9cd4",
+    "subscription_start": "2026-03-27T10:02:26.614315+00:00",
+    "server_id": "dde339c2-288c-441e-863c-2b4ee6a9479d",
+    "server_domain": "master-host",
+    "server_ip": "10.0.0.10",
+    "hardware_hash": "hw-master",
+    "server_registered_at": "2026-03-27T10:02:27.596647+00:00",
+    "created_at": "2026-03-27T10:02:26.767709+00:00",
+    "updated_at": "2026-03-27T10:02:27.597121+00:00"
+  }
+]

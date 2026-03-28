@@ -284,11 +284,8 @@ End-to-end football IPTV platform with three coordinated applications:
 2. Open `Mobile App Builder`.
 3. Set the tenant app name, Android package name, colors, and branding assets.
 4. Click `Generate APK`.
-5. The backend copies `mobile-template/`, injects tenant values, queues the build, and runs:
-   - `flutter clean`
-   - `flutter pub get`
-   - `flutter build apk --release`
-6. The finished APK is saved under `backend/generated_apps/<admin_id>/`.
+5. The backend queues the build, and a dedicated mobile build worker copies the mobile project into an isolated workspace and runs the APK build inside Docker.
+6. The finished APK is saved under `backend/generated_apps/<tenant_id>/`.
 7. Download the APK from the completed build row in the desktop app.
 
 ## Branding Workflow

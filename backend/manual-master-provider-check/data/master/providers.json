@@ -1,0 +1,17 @@
+[
+  {
+    "xtream_server_url": "http://provider.example.com",
+    "xtream_username": "master-user",
+    "xtream_password": "secret",
+    "m3u_playlist_url": "",
+    "cache_ttl_seconds": 300,
+    "saved_at": "2026-03-27T10:02:27.761617+00:00",
+    "id": "active",
+    "provider_id": "active",
+    "tenant_id": "master",
+    "name": "Active Provider",
+    "iptv_url": "http://provider.example.com",
+    "status": "active",
+    "active": true
+  }
+]

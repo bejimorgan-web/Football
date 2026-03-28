@@ -256,11 +256,13 @@ async function getBackendUrl() {
 
 async function callBackend(pathname, options = {}) {
   const settings = await getSettings();
-  const url = `${normalizeBackendUrl(getApiEndpointConfig(settings, "backend").url)}${pathname}`;
+  const backendEndpoint = getApiEndpointConfig(settings, "backend");
+  const url = `${normalizeBackendUrl(backendEndpoint.url)}${pathname}`;
   const headers = { ...(options.headers || {}) };
+  const authToken = String(session?.apiToken || backendEndpoint.apiToken || "").trim();
 
-  if (options.auth !== false && session?.apiToken) {
-    headers.Authorization = `Bearer ${session.apiToken}`;
+  if (options.auth !== false && authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
   }
   if (!headers["X-Device-Id"] && session?.deviceId) {
     headers["X-Device-Id"] = session.deviceId;
@@ -314,10 +316,25 @@ function safeJsonParse(value) {
 
 function withTenant(pathname, settings, tenantId = null) {
   const resolvedTenantId = String(
-    tenantId || session?.tenantId || settings?.tenantId || "default",
+    tenantId || settings?.tenantId || session?.tenantId || "default",
   ).trim() || "default";
   const separator = pathname.includes("?") ? "&" : "?";
   return `${pathname}${separator}tenant_id=${encodeURIComponent(resolvedTenantId)}`;
+}
+
+async function syncSessionTenantSetting() {
+  if (!providerStore) {
+    return;
+  }
+  const currentSettings = await providerStore.getSettings();
+  const sessionTenantId = String(session?.tenantId || "").trim();
+  const isMaster = String(session?.role || "").trim().toLowerCase() === "master";
+  const desiredTenantId = isMaster
+    ? String(currentSettings?.tenantId || sessionTenantId || "default").trim() || "default"
+    : sessionTenantId || "default";
+  if (String(currentSettings?.tenantId || "").trim() !== desiredTenantId) {
+    await providerStore.saveSettings({ ...currentSettings, tenantId: desiredTenantId });
+  }
 }
 
 function applyAdminSession(admin, apiToken = session?.apiToken || "") {
@@ -345,6 +362,7 @@ async function validateCurrentSession() {
   try {
     const payload = await callBackend("/admin/validate");
     applyAdminSession(payload.admin || {}, session.apiToken);
+    await syncSessionTenantSetting();
   } catch (error) {
     const message = String(error.message || "");
     if (message.toLowerCase().includes("expired")) {
@@ -556,6 +574,12 @@ function openPlatformClientsDashboardWindow() {
 
   platformClientsWindow.loadFile(platformClientsDashboardPath());
   return platformClientsWindow;
+}
+
+function requireMasterSession(action = "perform this action") {
+  if (String(session?.role || "").toLowerCase() !== "master") {
+    throw new Error(`Only master admins can ${action}.`);
+  }
 }
 
 async function syncActiveProviderToBackend() {
@@ -832,6 +856,7 @@ function setupIpcHandlers() {
       },
     });
     applyAdminSession(response.admin || {}, response.api_token || "");
+    await syncSessionTenantSetting();
     return { authenticated: true, session };
   });
 
@@ -846,6 +871,7 @@ function setupIpcHandlers() {
       },
     });
     applyAdminSession(response.admin || {}, response.api_token || "");
+    await syncSessionTenantSetting();
     return { authenticated: true, session };
   });
 
@@ -861,6 +887,7 @@ function setupIpcHandlers() {
       },
     });
     applyAdminSession(response.admin || {}, session.apiToken);
+    await syncSessionTenantSetting();
     return { authenticated: true, session };
   });
 
@@ -944,6 +971,7 @@ function setupIpcHandlers() {
   ipcMain.handle("app:get-default-api-url", async () => DEFAULT_PUBLIC_API_BASE_URL);
 
   ipcMain.handle("app:get-bootstrap", async () => {
+    await syncSessionTenantSetting();
     const settings = await providerStore.getSettings();
     const providers = session?.adminId ? await providerStore.listProviders(session.adminId) : [];
     const activeProvider = session?.adminId ? await providerStore.getActiveProvider(session.adminId) : null;
@@ -1001,6 +1029,7 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle("settings:api-test", async (_, payload) => {
+    requireMasterSession("manage platform API endpoints");
     const kind = payload?.kind === "public" ? "public" : "backend";
     return testApiEndpointConnection(kind, {
       url: payload?.url || "",
@@ -1009,6 +1038,7 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle("settings:api-connect", async (_, payload) => {
+    requireMasterSession("manage platform API endpoints");
     const kind = payload?.kind === "public" ? "public" : "backend";
     const settings = await getSettings();
     const draftPatch = buildApiSettingsPatch(settings, kind, {
@@ -1056,6 +1086,7 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle("settings:api-disconnect", async (_, payload) => {
+    requireMasterSession("manage platform API endpoints");
     const kind = payload?.kind === "public" ? "public" : "backend";
     const settings = await getSettings();
     const current = getApiEndpointConfig(settings, kind);

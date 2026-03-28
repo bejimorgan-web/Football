@@ -3,6 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import mobile_build_artifacts, mobile_build_store
 from app import mobile_builder
 
 
@@ -65,10 +66,17 @@ def _configure_builder(monkeypatch, tmp_path):
     monkeypatch.setattr(mobile_builder, "PRIMARY_MOBILE_PROJECT_DIR", mobile_dir)
     monkeypatch.setattr(mobile_builder, "GENERATED_APPS_DIR", generated_dir)
     monkeypatch.setattr(mobile_builder, "BUILD_QUEUE_DIR", queue_dir)
-    monkeypatch.setattr(mobile_builder, "BUILD_QUEUE_JOBS_PATH", queue_dir / "jobs.json")
     monkeypatch.setattr(mobile_builder, "BUILD_WORKSPACES_DIR", queue_dir / "workspaces")
     monkeypatch.setattr(mobile_builder, "LOGS_DIR", logs_dir)
     monkeypatch.setattr(mobile_builder, "BUILD_LOGS_DIR", logs_dir / "mobile-builder")
+    monkeypatch.setattr(mobile_builder, "DOCKERFILE_PATH", backend_root / "docker" / "flutter-android-builder.Dockerfile")
+    monkeypatch.setattr(mobile_builder, "MOBILE_BUILDER_BACKEND", "docker")
+    monkeypatch.setattr(mobile_builder, "DOCKER_IMAGE_NAME", "football-streaming-mobile-builder:latest")
+    monkeypatch.setattr(mobile_build_store, "BACKEND_ROOT", backend_root)
+    monkeypatch.setattr(mobile_build_store, "DATA_DIR", backend_root / "data")
+    monkeypatch.setattr(mobile_build_store, "MOBILE_BUILD_DB_PATH", backend_root / "data" / "mobile_builds.db")
+    monkeypatch.setattr(mobile_build_artifacts, "BACKEND_ROOT", backend_root)
+    monkeypatch.setattr(mobile_build_artifacts, "LOCAL_ARTIFACTS_ROOT", generated_dir)
     tenant_state = {
         "tenant_id": "goaltv",
         "name": "Goal TV",
@@ -105,6 +113,18 @@ def _configure_builder(monkeypatch, tmp_path):
     return backend_root, tenant_state
 
 
+def test_mobile_build_worker_disabled_by_default_on_render(monkeypatch):
+    monkeypatch.delenv("MOBILE_BUILD_WORKER_ENABLED", raising=False)
+    monkeypatch.setenv("RENDER", "true")
+    assert mobile_builder.mobile_build_worker_enabled() is False
+
+
+def test_mobile_build_worker_env_override(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv("MOBILE_BUILD_WORKER_ENABLED", "true")
+    assert mobile_builder.mobile_build_worker_enabled() is True
+
+
 def test_queue_mobile_build_blocks_duplicate_generation(monkeypatch, tmp_path):
     _configure_builder(monkeypatch, tmp_path)
 
@@ -122,14 +142,33 @@ def test_queue_mobile_build_blocks_duplicate_generation(monkeypatch, tmp_path):
 def test_mobile_build_limit(monkeypatch, tmp_path):
     _configure_builder(monkeypatch, tmp_path)
     for _ in range(5):
-        mobile_builder._save_jobs(
-            mobile_builder._load_jobs()
-            + [{
+        mobile_build_store.create_mobile_build_job(
+            {
                 "build_id": f"job-{_}",
                 "admin_id": "admin-1",
+                "tenant_id": "goaltv",
                 "status": "failed",
+                "progress": 0,
                 "created_at": f"{mobile_builder.utc_now_iso()}",
-            }]
+                "updated_at": f"{mobile_builder.utc_now_iso()}",
+                "completed_at": f"{mobile_builder.utc_now_iso()}",
+                "version": "1.0.0",
+                "app_name": "Goal TV",
+                "package_name": "com.goaltv.mobile",
+                "server_url": "https://api.platform.test",
+                "primary_color": "#11B37C",
+                "secondary_color": "#7EE3AF",
+                "logo_file": "",
+                "splash_screen": "",
+                "artifact_name": "",
+                "artifact_path": "",
+                "artifact_storage": "local",
+                "artifact_key": "",
+                "artifact_url": "",
+                "error": "",
+                "logs": "",
+                "worker_id": "",
+            }
         )
 
     try:
@@ -144,25 +183,28 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
     backend_root, tenant_state = _configure_builder(monkeypatch, tmp_path)
     job = mobile_builder.queue_mobile_build("admin-1")
 
-    def fake_run(build_id, command, cwd, log_path):
+    def fake_run(build_id, command, cwd, log_path, env=None):
         mobile_builder._log(log_path, f"fake run: {' '.join(command)}")
-        if command[:3] == ["flutter", "build", "apk"]:
+        if command[-3:] == ["build", "apk", "--release"]:
             apk = Path(cwd) / "build" / "app" / "outputs" / "flutter-apk"
             apk.mkdir(parents=True, exist_ok=True)
             (apk / "app-release.apk").write_bytes(b"apk")
 
-    monkeypatch.setattr(mobile_builder, "_ensure_flutter_available", lambda log_path=None: "C:/FlutterSDK/bin/flutter.bat")
-    monkeypatch.setattr(mobile_builder, "_run_flutter_command", fake_run)
+    monkeypatch.setattr(mobile_builder, "_ensure_docker_build_image", lambda build_id, log_path: "docker")
+    monkeypatch.setattr(mobile_builder, "_run_logged_command", fake_run)
     mobile_builder._process_job(job)
 
     status = mobile_builder.get_build_status("admin-1", job["build_id"])
     assert status["status"] == "completed"
     assert status["progress"] == 100
-    assert "fake run: flutter pub get" in status["logs"]
-    assert "fake run: flutter clean" in status["logs"]
-    assert "fake run: flutter build apk --release" in status["logs"]
+    assert "fake run: docker run" in status["logs"]
+    assert "[Docker] Build started" in status["logs"]
+    assert "[Docker] Build finished" in status["logs"]
+    assert " /opt/flutter/bin/flutter pub get" in status["logs"]
+    assert " /opt/flutter/bin/flutter clean" in status["logs"]
+    assert " /opt/flutter/bin/flutter build apk --release" in status["logs"]
     assert status["mobile_app_generated"] is True
-    artifact = backend_root / "generated_apps" / "admin-1" / "Goal-TV-1.0.0.apk"
+    artifact = backend_root / "generated_apps" / "goaltv" / "Goal-TV-1.0.0.apk"
     assert artifact.exists()
     assert tenant_state["mobile_app_generated"] is True
     assert tenant_state["mobile_app_package_id"] == "com.goaltv.mobile"
@@ -170,25 +212,66 @@ def test_process_job_completes_and_generates_apk(monkeypatch, tmp_path):
     assert 'android:label="mobile_new"' in restored_manifest
 
 
-def test_flutter_preflight_requires_installed_sdk(monkeypatch, tmp_path):
+def test_build_tenant_apk_in_docker_stages_workspace_and_stores_per_tenant(monkeypatch, tmp_path):
+    backend_root, _tenant_state = _configure_builder(monkeypatch, tmp_path)
+    log_path = backend_root / "logs" / "mobile-builder" / "docker-build.log"
+    tenant_data = mobile_builder._resolve_branding("admin-1")
+
+    def fake_run(build_id, command, cwd, log_path, env=None):
+        mobile_builder._log(log_path, f"fake run: {' '.join(command)}")
+        if command[-3:] == ["build", "apk", "--release"]:
+            apk = Path(cwd) / "build" / "app" / "outputs" / "flutter-apk"
+            apk.mkdir(parents=True, exist_ok=True)
+            (apk / "app-release.apk").write_bytes(b"docker-apk")
+
+    monkeypatch.setattr(mobile_builder, "_ensure_docker_build_image", lambda build_id, log_path: "docker")
+    monkeypatch.setattr(mobile_builder, "_run_logged_command", fake_run)
+
+    result = mobile_builder.build_tenant_apk_in_docker(
+        build_id="build-1",
+        tenant_data=tenant_data,
+        version="1.0.0",
+        admin_id="admin-1",
+        log_path=log_path,
+    )
+
+    artifact = Path(result["artifact_path"])
+    assert artifact.exists()
+    assert artifact == backend_root / "generated_apps" / "goaltv" / "Goal-TV-1.0.0.apk"
+    log_contents = log_path.read_text(encoding="utf-8")
+    assert "[Docker] Build started" in log_contents
+    assert "[Docker] Build finished" in log_contents
+    assert "football-streaming-mobile-builder:latest" in log_contents
+    workspace_local_properties = backend_root / "build_queue" / "workspaces" / "build-1" / "mobile" / "android" / "local.properties"
+    workspace_manifest = backend_root / "build_queue" / "workspaces" / "build-1" / "mobile" / "android" / "app" / "src" / "main" / "AndroidManifest.xml"
+    assert "/opt/flutter" in workspace_local_properties.read_text(encoding="utf-8")
+    assert "/opt/android-sdk" in workspace_local_properties.read_text(encoding="utf-8")
+    assert '@string/app_name' in workspace_manifest.read_text(encoding="utf-8")
+
+
+def test_flutter_preflight_skips_host_validation_when_docker_enabled(monkeypatch, tmp_path):
     _configure_builder(monkeypatch, tmp_path)
-    monkeypatch.setattr(mobile_builder, "_resolve_flutter_executable", lambda: (_ for _ in ()).throw(RuntimeError("missing flutter")))
+    monkeypatch.setattr(mobile_builder, "_resolve_flutter_executable", lambda: "/opt/flutter/bin/flutter")
+    assert mobile_builder._ensure_flutter_available() == "/opt/flutter/bin/flutter"
+
+
+def test_android_sdk_preflight_skips_host_validation_when_docker_enabled(monkeypatch, tmp_path):
+    _configure_builder(monkeypatch, tmp_path)
+    monkeypatch.setattr(mobile_builder, "_resolve_android_sdk_dir", lambda: (_ for _ in ()).throw(AssertionError("host SDK lookup should be skipped")))
+    assert mobile_builder._ensure_android_sdk_available() == "/opt/android-sdk"
+
+
+def test_local_flutter_execution_is_disabled(monkeypatch, tmp_path):
+    _configure_builder(monkeypatch, tmp_path)
 
     try:
-        mobile_builder._ensure_flutter_available()
+        mobile_builder._run_flutter_command(
+            "build-1",
+            ["flutter", "build", "apk", "--release"],
+            mobile_builder.PRIMARY_MOBILE_PROJECT_DIR,
+            mobile_builder.BUILD_LOGS_DIR / "local-disabled.log",
+        )
     except RuntimeError as exc:
-        assert "Flutter SDK is required before running APK builds" in str(exc)
+        assert "Local Flutter execution is disabled" in str(exc)
     else:
-        raise AssertionError("Expected missing Flutter preflight error")
-
-
-def test_android_sdk_preflight_requires_installed_sdk(monkeypatch, tmp_path):
-    _configure_builder(monkeypatch, tmp_path)
-    monkeypatch.setattr(mobile_builder, "_resolve_android_sdk_dir", lambda: "")
-
-    try:
-        mobile_builder._ensure_android_sdk_available()
-    except RuntimeError as exc:
-        assert "Android SDK is required before running APK builds" in str(exc)
-    else:
-        raise AssertionError("Expected missing Android SDK preflight error")
+        raise AssertionError("Expected local Flutter execution to be disabled")

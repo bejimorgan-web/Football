@@ -1,4 +1,4 @@
-﻿name: football_streaming_app
+name: football_streaming_app
 version: 0.1.0
 publish_to: "none"
 
@@ -10,14 +10,14 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  device_info_plus: ^11.2.2
+  device_info_plus: ^12.3.0
   dio: ^5.7.0
   http: ^1.2.0
   install_plugin:
     path: third_party/install_plugin
   video_player: ^2.8.3
   shared_preferences: ^2.2.3
-  google_mobile_ads: ^5.1.0
+  google_mobile_ads: ^7.0.0
 
 dev_dependencies:
   flutter_test:

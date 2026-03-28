@@ -22,7 +22,12 @@ from app.backup import ensure_backup_storage, start_backup_scheduler, stop_backu
 from app.branding_engine import BRANDING_CDN_ROOT, BRANDING_STORAGE_ROOT, ensure_branding_storage
 from app.logo_utils import STATIC_ROOT, ensure_static_logo_storage
 from app.notifications import start_notification_scheduler, stop_notification_scheduler
-from app.mobile_builder import ensure_mobile_builder_storage, start_mobile_build_worker, stop_mobile_build_worker
+from app.mobile_builder import (
+    ensure_mobile_builder_storage,
+    mobile_build_worker_enabled,
+    start_mobile_build_worker,
+    stop_mobile_build_worker,
+)
 from app.routes.admin_accounts import router as admin_accounts_router
 from app.routes.admin_auth import router as admin_auth_router
 from app.routes.admin import router as admin_router
@@ -51,6 +56,7 @@ AUDIT_EXCLUDED_PREFIXES = (
     "/analytics/",
     "/admin/security",
 )
+MOBILE_BUILD_WORKER_ACTIVE = False
 
 
 def _cors_allowed_origins() -> list[str]:
@@ -186,6 +192,7 @@ async def audit_request(request: Request, call_next):
 
 @app.on_event("startup")
 def load_env_config() -> None:
+    global MOBILE_BUILD_WORKER_ACTIVE
     settings = load_settings_from_env()
     backup_settings = load_backup_settings_from_env()
     email_settings = load_email_settings_from_env()
@@ -201,14 +208,20 @@ def load_env_config() -> None:
 
     start_backup_scheduler(backup_settings)
     start_notification_scheduler(email_settings)
-    start_mobile_build_worker()
+    MOBILE_BUILD_WORKER_ACTIVE = mobile_build_worker_enabled()
+    if MOBILE_BUILD_WORKER_ACTIVE:
+        logger.info("Starting embedded mobile build worker in API process.")
+        start_mobile_build_worker()
+    else:
+        logger.info("Embedded mobile build worker disabled for this API process.")
 
 
 @app.on_event("shutdown")
 def shutdown_background_services() -> None:
     stop_backup_scheduler()
     stop_notification_scheduler()
-    stop_mobile_build_worker()
+    if MOBILE_BUILD_WORKER_ACTIVE:
+        stop_mobile_build_worker()
     flush_audit_logs(force=True)
 
 

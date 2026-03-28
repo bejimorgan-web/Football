@@ -286,8 +286,10 @@ FastAPI backend for IPTV ingestion, football metadata management, approved strea
 
 ## Mobile App Builder
 
-- The backend now includes a tenant APK generation pipeline driven by a reusable Flutter template at:
-  - `../mobile-template/`
+- The backend now includes a tenant APK generation pipeline driven by the real Flutter project at:
+  - `../mobile/`
+- APK builds run inside the Docker image defined at:
+  - `docker/flutter-android-builder.Dockerfile`
 - Tenant branding records for APK generation can include:
   - `app_name`
   - `package_name`
@@ -304,27 +306,35 @@ FastAPI backend for IPTV ingestion, football metadata management, approved strea
 - `POST /mobile/build` is restricted to authenticated admins and:
   - loads tenant branding
   - increments the tenant app version automatically
-  - copies `mobile-template/`
+  - copies `mobile/` into an isolated build workspace
   - injects app name, package name, tenant id, backend URL, colors, and branding assets
+  - runs `flutter pub get`, `flutter clean`, and `flutter build apk --release` inside Docker
   - queues the build for background processing
 - Download access is tenant-scoped so admins cannot fetch another tenant's APK.
 
 ## Mobile Build Queue
 
 - Build queue state is stored in:
-  - `build_queue/jobs.json`
+  - PostgreSQL via `MOBILE_BUILD_DATABASE_URL`
+  - `data/mobile_builds.db` as the local fallback when no PostgreSQL URL is configured
   - `build_queue/workspaces/`
 - Generated APKs are stored in:
-  - `generated_apps/<admin_id>/`
+  - `generated_apps/<tenant_id>/` when using local artifact storage
+  - S3/object storage when `MOBILE_BUILD_ARTIFACT_STORAGE=s3`
 - Build logs are stored in:
-  - `logs/mobile-builder/`
+  - `data/mobile_builds.db`
+  - `logs/mobile-builder/` for local worker diagnostics
 - Job statuses:
   - `queued`
   - `building`
   - `completed`
   - `failed`
 - Only one Flutter build runs at a time, which avoids concurrent workspace collisions on the shared host.
-- The worker runs in the FastAPI process lifecycle and starts automatically with the backend.
+- The API process only auto-starts the worker outside Render-managed environments.
+- Set `MOBILE_BUILD_WORKER_ENABLED=false` on the web/API service to force queue-only behavior.
+- Run the dedicated worker process with:
+  - `python -m app.mobile_build_worker_service`
+- The dedicated worker host must have Docker access because APK builds run through `football-streaming-mobile-builder:latest`.
 
 ## Mobile Version History
 
@@ -340,6 +350,28 @@ FastAPI backend for IPTV ingestion, football metadata management, approved strea
 - APK downloads check both authentication and build ownership.
 - Tenants are limited to 5 APK builds per day.
 - Embedded tenant config ensures the resulting app connects only to the intended tenant backend.
+
+## Mobile Builder Deployment Split
+
+- Recommended production split:
+  - web/API service: serves HTTP endpoints and queues builds
+  - mobile builder worker: claims jobs from the API and performs Docker APK builds
+- Detailed deployment guide:
+  - `MOBILE_BUILD_DEPLOYMENT.md`
+- Example environment file:
+  - `.env.example`
+- Recommended environment variables for the web/API service:
+  - `MOBILE_BUILDER_BACKEND=docker`
+  - `MOBILE_BUILD_WORKER_ENABLED=false`
+  - `MOBILE_BUILD_WORKER_TOKEN=<shared-secret>`
+  - `MOBILE_BUILD_DATABASE_URL=postgresql://...`
+- Recommended environment variables for the dedicated worker host:
+  - `MOBILE_BUILDER_BACKEND=docker`
+  - `MOBILE_BUILD_WORKER_ENABLED=true`
+  - `MOBILE_BUILD_WORKER_API_URL=https://your-api-host`
+  - `MOBILE_BUILD_WORKER_TOKEN=<shared-secret>`
+- On Render web services, the worker is disabled by default when Render environment variables are detected.
+- Use `MOBILE_BUILD_ARTIFACT_STORAGE=s3` when the worker host does not share the API filesystem.
 
 ## Desktop Licensing
 
@@ -522,7 +554,7 @@ FastAPI backend for IPTV ingestion, football metadata management, approved strea
 - Admin subscriptions are persisted in `data/admins.json` with hashed passwords, hashed API tokens, device binding, and server binding metadata.
 - Set `STREAM_TOKEN_SECRET` in the backend environment for stable signed playback tokens outside local development.
 - Set `TENANT_AUTH_SECRET` for stable tenant admin bearer tokens outside local development.
-- Flutter must be installed and available on the backend host for APK generation jobs to complete.
+- Docker must be installed and able to build/run `docker/flutter-android-builder.Dockerfile` for APK generation jobs to complete.
 
 ## Multi-Tenant Migration
 

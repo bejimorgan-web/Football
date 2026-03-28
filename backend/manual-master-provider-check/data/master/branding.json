@@ -1,0 +1,21 @@
+{
+  "app_name": "Football Streaming",
+  "package_name": "com.footballstreaming.default",
+  "logo_url": "",
+  "logo_file": "",
+  "icon_url": "",
+  "primary_color": "#11B37C",
+  "secondary_color": "#7EE3AF",
+  "accent_color": "#7EE3AF",
+  "surface_color": "#0D1E2B",
+  "background_color": "#07141E",
+  "text_color": "#F2F8FF",
+  "api_base_url": "",
+  "server_url": "",
+  "splash_screen": "",
+  "default_language": "system",
+  "supported_languages": [
+    "en",
+    "fr"
+  ]
+}
