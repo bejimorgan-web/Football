@@ -130,9 +130,17 @@ def mobile_build_history(current_user: dict = Depends(get_current_user)):
 
 @router.post("/worker/claim")
 def mobile_worker_claim(payload: WorkerClaimPayload):
-    worker_id = str(payload.worker_id or "").strip() or "remote-worker"
-    return {"status": "ok", "worker_id": worker_id}
+    try:
+        worker_id = str(payload.worker_id or "").strip() or "remote-worker"
+        job = claim_next_build_for_worker(worker_id)
 
+        if not isinstance(job, dict):
+            return {"status": "no_job"}
+
+        return {"status": "ok", "job": job}
+
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 @router.get("/worker/build/{build_id}")
 def mobile_worker_get_build(build_id: str, _: bool = Depends(_require_mobile_worker_token)):
