@@ -69,7 +69,7 @@ def _queue_build_for_current_user(current_user: dict):
 
 @router.post("/build")
 def create_mobile_build():
-    return queue_mobile_build("test-admin")
+    return {"status": "ok"}
 
 
 @router.post("/generate")
