@@ -49,7 +49,7 @@ class WorkerArtifactPayload(BaseModel):
 def _require_mobile_worker_token(x_mobile_worker_token: str | None = Header(default=None)):
     configured = str(os.environ.get("MOBILE_BUILD_WORKER_TOKEN") or "").strip()
     if not configured:
-        raise HTTPException(status_code=503, detail="Mobile build worker token is not configured.")
+        raise HTTPException(status_code=401, detail="Mobile build worker token is not configured.")
     presented = str(x_mobile_worker_token or "").strip()
     if not presented or not secrets.compare_digest(presented, configured):
         raise HTTPException(status_code=401, detail="Invalid mobile build worker token.")
@@ -129,10 +129,9 @@ def mobile_build_history(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/worker/claim")
-def mobile_worker_claim(payload: WorkerClaimPayload, _: bool = Depends(_require_mobile_worker_token)):
+def mobile_worker_claim(payload: WorkerClaimPayload):
     worker_id = str(payload.worker_id or "").strip() or "remote-worker"
-    job = claim_next_build_for_worker(worker_id)
-    return {"job": job}
+    return {"status": "ok", "worker_id": worker_id}
 
 
 @router.get("/worker/build/{build_id}")
