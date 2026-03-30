@@ -225,3 +225,4 @@ def mobile_runtime_config(tenant_id: str):
         "feature_flags": tenant.get("feature_flags") or {},
         "update_manifest": get_mobile_runtime_manifest(tenant_id),
     }
+

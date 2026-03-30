@@ -264,9 +264,23 @@ async function callBackend(pathname, options = {}) {
   const backendEndpoint = getApiEndpointConfig(settings, "backend");
   const url = `${normalizeBackendUrl(backendEndpoint.url)}${pathname}`;
   const headers = { ...(options.headers || {}) };
-  const authToken = String(session?.apiToken || backendEndpoint.apiToken || "").trim();
+  const authRequired = options.auth !== false;
+  const authToken = String(session?.apiToken || "").trim();
 
-  if (options.auth !== false && authToken) {
+  if (authRequired && !authToken) {
+    writeDesktopLog(`Backend request blocked: missing session api token for ${options.method || "GET"} ${url}`);
+    throw new Error("Admin session token is missing. Please log in again.");
+  }
+  if (authRequired && !String(session?.deviceId || "").trim()) {
+    writeDesktopLog(`Backend request blocked: missing device id for ${options.method || "GET"} ${url}`);
+    throw new Error("Desktop device ID is missing. Please log in again.");
+  }
+  if (authRequired && !String(session?.serverId || "").trim()) {
+    writeDesktopLog(`Backend request blocked: missing server id for ${options.method || "GET"} ${url}`);
+    throw new Error("Desktop server ID is missing. Please log in again.");
+  }
+
+  if (authRequired) {
     headers.Authorization = `Bearer ${authToken}`;
   }
   if (!headers["X-Device-Id"] && session?.deviceId) {
@@ -281,6 +295,13 @@ async function callBackend(pathname, options = {}) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(body);
   }
+
+  writeDesktopLog(
+    `Backend request ${options.method || "GET"} ${url} auth_required=${authRequired} token=${maskToken(authToken)} device_id=${String(headers["X-Device-Id"] || "")} server_id=${String(headers["X-Server-Id"] || "")} headers=${JSON.stringify({
+      ...headers,
+      Authorization: headers.Authorization ? `Bearer ${maskToken(authToken)}` : "",
+    })}`,
+  );
 
   let response;
   try {
@@ -305,6 +326,11 @@ async function callBackend(pathname, options = {}) {
   const text = await response.text();
   const payload = text ? safeJsonParse(text) : {};
   if (!response.ok) {
+    if (response.status === 401) {
+      writeDesktopLog(
+        `Backend 401 for ${options.method || "GET"} ${url} token=${maskToken(authToken)} device_present=${Boolean(headers["X-Device-Id"])} server_present=${Boolean(headers["X-Server-Id"])} session_tenant=${String(session?.tenantId || "")} settings_tenant=${String(settings?.tenantId || "")} resolved_tenant=${resolveTenantId(settings)}`,
+      );
+    }
     const detail = payload?.detail || payload?.message || text || `Request failed with status ${response.status}.`;
     throw new Error(detail);
   }
@@ -319,6 +345,17 @@ function safeJsonParse(value) {
   }
 }
 
+function maskToken(value) {
+  const token = String(value || "").trim();
+  if (!token) {
+    return "";
+  }
+  if (token.length <= 8) {
+    return `${token.slice(0, 2)}***${token.slice(-2)}`;
+  }
+  return `${token.slice(0, 4)}***${token.slice(-4)}`;
+}
+
 function isDefaultTenantId(value) {
   return String(value || "").trim().toLowerCase() === "default";
 }
@@ -331,23 +368,15 @@ function resolveTenantId(settings, explicitTenantId = null) {
 
   const sessionTenantId = String(session?.tenantId || "").trim();
   const settingsTenantId = String(settings?.tenantId || "").trim();
-  const isMaster = String(session?.role || "").trim().toLowerCase() === "master";
-
-  if (isMaster) {
-    if (settingsTenantId && !isDefaultTenantId(settingsTenantId)) {
-      return settingsTenantId;
-    }
-    if (sessionTenantId) {
-      return sessionTenantId;
-    }
-    return "master";
-  }
 
   if (sessionTenantId) {
     return sessionTenantId;
   }
-  if (settingsTenantId) {
+  if (settingsTenantId && !isDefaultTenantId(settingsTenantId)) {
     return settingsTenantId;
+  }
+  if (String(session?.role || "").trim().toLowerCase() === "master") {
+    return "master";
   }
   return "default";
 }
@@ -1212,7 +1241,7 @@ function setupIpcHandlers() {
   };
 
   tenantPost("backend:tenant-login", "/tenant/login");
-  backendGet("backend:tenant-profile", (_, settings) => `/tenant/profile?tenant_id=${encodeURIComponent(settings.tenantId || "default")}`);
+  backendGet("backend:tenant-profile", "/tenant/profile");
   backendGet("backend:tenant-list", "/admin/tenants");
   backendPost("backend:tenant-save", "/admin/tenants");
   backendGet("backend:branding-get", "/admin/branding");
