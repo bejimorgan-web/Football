@@ -10,6 +10,7 @@ import httpx
 from app.api_config import ensure_api_config_storage
 from app.backup import ensure_backup_storage
 from app.branding_engine import ensure_branding_storage
+from app.env_loader import load_backend_env
 from app.logo_utils import ensure_static_logo_storage
 import app.mobile_builder as mobile_builder
 from app.mobile_builder import (
@@ -25,6 +26,8 @@ from app.update_service import ensure_update_storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("football_iptv.mobile_builder_worker")
+
+load_backend_env(worker=True)
 
 
 def _prepare_runtime_storage() -> None:
@@ -132,7 +135,11 @@ def _process_remote_job(client: httpx.Client, job: dict) -> None:
 def main() -> None:
     _prepare_runtime_storage()
     logger.info("Mobile build worker process starting.")
-    logger.info("MOBILE_BUILD_WORKER_ENABLED=%s", mobile_build_worker_enabled())
+    worker_enabled = mobile_build_worker_enabled()
+    logger.info("MOBILE_BUILD_WORKER_ENABLED=%s", worker_enabled)
+    if not worker_enabled:
+        logger.info("Mobile build worker is disabled by configuration. Exiting without starting worker loops.")
+        return
     if _remote_worker_api_url() and _remote_worker_token():
         _run_remote_worker()
         return
@@ -149,3 +156,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+import os
+print("DATABASE_URL:", os.getenv("MOBILE_BUILD_DATABASE_URL"))

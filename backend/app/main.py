@@ -28,6 +28,7 @@ from app.mobile_builder import (
     start_mobile_build_worker,
     stop_mobile_build_worker,
 )
+from app.env_loader import load_backend_env
 from app.routes.admin_accounts import router as admin_accounts_router
 from app.routes.admin_auth import router as admin_auth_router
 from app.routes.admin import router as admin_router
@@ -50,6 +51,8 @@ from app.settings import is_development_mode, load_backup_settings_from_env, loa
 from app.storage import ASSETS_DIR, ensure_storage_files, flush_audit_logs, load_config, log_audit_event, save_config
 from app.tenant_middleware import tenant_resolver
 from app.update_service import ensure_update_storage
+
+load_backend_env()
 
 logger = logging.getLogger("football_iptv.api")
 AUDIT_EXCLUDED_PREFIXES = (
