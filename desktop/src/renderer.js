@@ -95,6 +95,18 @@ const isMasterRole = () => String(state.session?.role || "").toLowerCase() === "
 const isClientRole = () => !isMasterRole();
 const mobileAppAlreadyGenerated = () => state.branding?.mobile_app_generated === true;
 
+function effectiveTenantId() {
+  const sessionTenantId = String(state.session?.tenantId || "").trim();
+  const settingsTenantId = String(state.settings?.tenantId || "").trim();
+  if (isMasterRole()) {
+    if (settingsTenantId && settingsTenantId.toLowerCase() !== "default") {
+      return settingsTenantId;
+    }
+    return sessionTenantId || "master";
+  }
+  return sessionTenantId || settingsTenantId || "default";
+}
+
 const $ = (id) => document.getElementById(id);
 const getNodes = (...ids) => ids.map((id) => $(id)).filter(Boolean);
 
@@ -654,13 +666,13 @@ function hydrateSettings() {
   el.tenantUsernameInput.value = state.settings.tenantUsername || "";
   el.tenantPasswordInput.value = state.settings.tenantPassword || "";
   el.settingsBackendUrlMirror.value = backendApi.url || "";
-  el.settingsTenantMirror.value = state.session.adminEmail || state.settings.tenantId || "default";
+  el.settingsTenantMirror.value = state.session.adminEmail || effectiveTenantId();
   el.settingsTenantUserMirror.value = state.session.deviceId || "-";
   el.welcomeClientLabel.textContent = `Welcome, ${state.session.adminName || state.branding?.name || "Client"}`;
   el.headerSubscriptionLabel.textContent = `Subscription: ${state.session.subscriptionStatus || "-"}`;
   el.headerPlanLabel.textContent = `Plan: ${state.session.planId || state.session.plan_id || "-"}`;
   el.headerServerLabel.textContent = `Server ID: ${state.session.serverId || "-"}`;
-  el.tenantSelect.innerHTML = optionMarkup((state.tenants || []).map((item) => ({ id: item.tenant_id, name: item.name })), state.settings.tenantId || "default") || '<option value="default">default</option>';
+  el.tenantSelect.innerHTML = optionMarkup((state.tenants || []).map((item) => ({ id: item.tenant_id, name: item.name })), effectiveTenantId()) || '<option value="default">default</option>';
 
   const branding = state.branding?.branding || {};
   applyDashboardBranding(branding);
@@ -676,7 +688,7 @@ function hydrateSettings() {
   if (el.mobileBuilderServerUrlInput) el.mobileBuilderServerUrlInput.value = branding.server_url || branding.api_base_url || publicApi.url || DEFAULT_API_URL;
   if (el.mobileBuilderPrimaryColorInput) el.mobileBuilderPrimaryColorInput.value = branding.primary_color || "";
   if (el.mobileBuilderSecondaryColorInput) el.mobileBuilderSecondaryColorInput.value = branding.secondary_color || branding.accent_color || "";
-  if (el.mobileBuilderTenantIdLabel) el.mobileBuilderTenantIdLabel.value = state.session.tenantId || state.settings.tenantId || "default";
+  if (el.mobileBuilderTenantIdLabel) el.mobileBuilderTenantIdLabel.value = effectiveTenantId();
   applyMobileBuildLockState();
   renderApiEndpointState();
 
@@ -1282,7 +1294,7 @@ function renderMobileBuilds() {
   }
   if (el.mobileBuildAuthSummary) {
     const authState = authToken ? "Authenticated token present." : "No bearer token available for admin-protected calls.";
-    const tenantState = ` Tenant: ${session.tenantId || state.settings?.tenantId || "default"}.`;
+    const tenantState = ` Tenant: ${effectiveTenantId()}.`;
     const serverState = ` Server ID: ${session.serverId || "-"}.`;
     el.mobileBuildAuthSummary.textContent = `${authState}${tenantState}${serverState}`;
   }
@@ -1299,6 +1311,7 @@ function renderMobileBuilds() {
       `[INFO] session.serverId: ${session.serverId || "-"}`,
       `[INFO] backendApi.url: ${backendApi.url || state.settings?.backendUrl || "-"}`,
       `[INFO] settings.tenantId: ${state.settings?.tenantId || "default"}`,
+      `[INFO] effectiveTenantId: ${effectiveTenantId()}`,
     ].join("\n");
   }
   if (el.mobileBuildLogsOutput) {

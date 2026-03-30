@@ -319,10 +319,41 @@ function safeJsonParse(value) {
   }
 }
 
+function isDefaultTenantId(value) {
+  return String(value || "").trim().toLowerCase() === "default";
+}
+
+function resolveTenantId(settings, explicitTenantId = null) {
+  const requestedTenantId = String(explicitTenantId || "").trim();
+  if (requestedTenantId) {
+    return requestedTenantId;
+  }
+
+  const sessionTenantId = String(session?.tenantId || "").trim();
+  const settingsTenantId = String(settings?.tenantId || "").trim();
+  const isMaster = String(session?.role || "").trim().toLowerCase() === "master";
+
+  if (isMaster) {
+    if (settingsTenantId && !isDefaultTenantId(settingsTenantId)) {
+      return settingsTenantId;
+    }
+    if (sessionTenantId) {
+      return sessionTenantId;
+    }
+    return "master";
+  }
+
+  if (sessionTenantId) {
+    return sessionTenantId;
+  }
+  if (settingsTenantId) {
+    return settingsTenantId;
+  }
+  return "default";
+}
+
 function withTenant(pathname, settings, tenantId = null) {
-  const resolvedTenantId = String(
-    tenantId || settings?.tenantId || session?.tenantId || "default",
-  ).trim() || "default";
+  const resolvedTenantId = resolveTenantId(settings, tenantId);
   const separator = pathname.includes("?") ? "&" : "?";
   return `${pathname}${separator}tenant_id=${encodeURIComponent(resolvedTenantId)}`;
 }
@@ -334,9 +365,14 @@ async function syncSessionTenantSetting() {
   const currentSettings = await providerStore.getSettings();
   const sessionTenantId = String(session?.tenantId || "").trim();
   const isMaster = String(session?.role || "").trim().toLowerCase() === "master";
+  const currentTenantId = String(currentSettings?.tenantId || "").trim();
   const desiredTenantId = isMaster
-    ? String(currentSettings?.tenantId || sessionTenantId || "default").trim() || "default"
-    : sessionTenantId || "default";
+    ? (
+      (!currentTenantId || isDefaultTenantId(currentTenantId))
+        ? (sessionTenantId || "master")
+        : currentTenantId
+    )
+    : (sessionTenantId || "default");
   if (String(currentSettings?.tenantId || "").trim() !== desiredTenantId) {
     await providerStore.saveSettings({ ...currentSettings, tenantId: desiredTenantId });
   }
