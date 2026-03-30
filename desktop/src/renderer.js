@@ -98,12 +98,6 @@ const mobileAppAlreadyGenerated = () => state.branding?.mobile_app_generated ===
 function effectiveTenantId() {
   const sessionTenantId = String(state.session?.tenantId || "").trim();
   const settingsTenantId = String(state.settings?.tenantId || "").trim();
-  if (isMasterRole()) {
-    if (settingsTenantId && settingsTenantId.toLowerCase() !== "default") {
-      return settingsTenantId;
-    }
-    return sessionTenantId || "master";
-  }
   return sessionTenantId || settingsTenantId || "default";
 }
 

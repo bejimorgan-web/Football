@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import hashlib
 import hmac
 import json
@@ -70,6 +71,7 @@ STREAM_TOKEN_TTL_SECONDS = 60
 PRIVATE_IP_PREFIXES = ("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "127.", "::1")
 DEFAULT_TENANT_ID = "default"
 MASTER_TENANT_ID = "master"
+logger = logging.getLogger("football_iptv.storage")
 
 
 def utc_now() -> datetime:
@@ -504,6 +506,12 @@ def get_api_version_payload(
 
 def authenticate_tenant_admin(tenant_id: str, username: str, password: str) -> Dict[str, object]:
     tenant = get_tenant(tenant_id)
+    logger.info(
+        "Tenant admin login lookup tenant_id=%s requested_username=%s resolved_tenant_id=%s",
+        tenant_id,
+        str(username or "").strip(),
+        str(tenant.get("tenant_id") or ""),
+    )
     credentials = tenant.get("admin_credentials") or {}
     if not credentials.get("username") or not credentials.get("password"):
         raise ValueError("Tenant admin credentials are not configured.")
@@ -1622,6 +1630,13 @@ def register_admin(
 
 def authenticate_admin(email: str, password: str, device_id: str) -> Dict[str, object]:
     admin = get_admin_by_email(email)
+    logger.info(
+        "Admin login lookup email=%s found=%s tenant_id=%s role=%s",
+        _normalize_email(email),
+        bool(admin),
+        str((admin or {}).get("tenant_id") or ""),
+        str((admin or {}).get("role") or ""),
+    )
     if admin is None:
         raise ValueError("Invalid email or password.")
     is_master = _normalize_admin_role(admin.get("role"), default="client") == "master"

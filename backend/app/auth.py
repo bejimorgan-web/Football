@@ -1,3 +1,4 @@
+import logging
 import secrets
 from typing import Callable, Optional
 
@@ -5,9 +6,34 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from app.settings import load_admin_settings_from_env
-from app.storage import _normalize_admin_role, validate_admin_api_token, validate_mobile_tenant_access, validate_tenant_access_token
+from app.storage import _normalize_admin_role, _normalize_tenant_id, validate_admin_api_token, validate_mobile_tenant_access, validate_tenant_access_token
 
 security = HTTPBasic(auto_error=False)
+logger = logging.getLogger("football_iptv.auth")
+
+
+def _requested_tenant_id(request: Request) -> str:
+    return str(
+        request.headers.get("x-tenant-id")
+        or request.query_params.get("tenant_id")
+        or ""
+    ).strip()
+
+
+def _enforce_token_tenant_match(request: Request, token_tenant_id: object) -> None:
+    requested_tenant = _requested_tenant_id(request)
+    if not requested_tenant:
+        return
+    normalized_token_tenant = _normalize_tenant_id(token_tenant_id)
+    normalized_requested_tenant = _normalize_tenant_id(requested_tenant)
+    if normalized_token_tenant != normalized_requested_tenant:
+        logger.warning(
+            "Token tenant %s does not match request tenant %s for %s",
+            normalized_token_tenant,
+            normalized_requested_tenant,
+            request.url.path,
+        )
+        raise HTTPException(status_code=401, detail="Token tenant does not match requested tenant.")
 
 
 def _set_admin_context(request: Request, admin: dict) -> dict:
@@ -31,6 +57,12 @@ def get_current_user(
     x_server_id: Optional[str] = Header(default=None),
 ):
     if not authorization or not authorization.lower().startswith("bearer "):
+        logger.warning(
+            "Admin auth rejected for %s: missing bearer token device_id_present=%s server_id_present=%s",
+            request.url.path,
+            bool(str(x_device_id or "").strip()),
+            bool(str(x_server_id or "").strip()),
+        )
         raise HTTPException(status_code=401, detail="Admin token required.")
     require_server = not request.url.path.endswith(("/register-server", "/reset-server", "/transfer-device"))
     token = authorization.split(" ", 1)[1].strip()
@@ -42,7 +74,16 @@ def get_current_user(
             require_server=require_server,
         )
     except ValueError as exc:
+        logger.warning(
+            "Admin auth rejected for %s: %s device_id=%s server_id=%s require_server=%s",
+            request.url.path,
+            str(exc),
+            str(x_device_id or "").strip(),
+            str(x_server_id or "").strip(),
+            require_server,
+        )
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    _enforce_token_tenant_match(request, admin.get("tenant_id"))
     return _set_admin_context(request, admin)
 
 
@@ -75,13 +116,24 @@ def require_admin_context(
                 server_id=str(x_server_id or "").strip(),
                 require_server=require_server,
             )
+            _enforce_token_tenant_match(request, admin.get("tenant_id"))
             _set_admin_context(request, admin)
             return
-        except ValueError:
+        except ValueError as admin_exc:
             try:
                 payload = validate_tenant_access_token(token)
             except ValueError as exc:
+                logger.warning(
+                    "Admin context auth rejected for %s: admin_error=%s tenant_error=%s device_id=%s server_id=%s require_server=%s",
+                    request.url.path,
+                    str(admin_exc),
+                    str(exc),
+                    str(x_device_id or "").strip(),
+                    str(x_server_id or "").strip(),
+                    require_server,
+                )
                 raise HTTPException(status_code=401, detail=str(exc)) from exc
+            _enforce_token_tenant_match(request, payload.get("tenant_id"))
             request.state.admin_context = {
                 "scope": "tenant",
                 "tenant_id": payload.get("tenant_id"),

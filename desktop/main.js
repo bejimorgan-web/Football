@@ -375,9 +375,6 @@ function resolveTenantId(settings, explicitTenantId = null) {
   if (settingsTenantId && !isDefaultTenantId(settingsTenantId)) {
     return settingsTenantId;
   }
-  if (String(session?.role || "").trim().toLowerCase() === "master") {
-    return "master";
-  }
   return "default";
 }
 
@@ -393,15 +390,7 @@ async function syncSessionTenantSetting() {
   }
   const currentSettings = await providerStore.getSettings();
   const sessionTenantId = String(session?.tenantId || "").trim();
-  const isMaster = String(session?.role || "").trim().toLowerCase() === "master";
-  const currentTenantId = String(currentSettings?.tenantId || "").trim();
-  const desiredTenantId = isMaster
-    ? (
-      (!currentTenantId || isDefaultTenantId(currentTenantId))
-        ? (sessionTenantId || "master")
-        : currentTenantId
-    )
-    : (sessionTenantId || "default");
+  const desiredTenantId = sessionTenantId || "default";
   if (String(currentSettings?.tenantId || "").trim() !== desiredTenantId) {
     await providerStore.saveSettings({ ...currentSettings, tenantId: desiredTenantId });
   }

@@ -51,7 +51,7 @@ class WorkerArtifactPayload(BaseModel):
 
 
 def _require_mobile_worker_token(x_mobile_worker_token: str | None = Header(default=None)):
-    configured = str(os.environ.get("MOBILE_BUILD_WORKER_TOKEN") or "").strip()
+    configured = str(os.getenv("MOBILE_BUILD_WORKER_TOKEN") or "").strip()
     if not configured:
         raise HTTPException(status_code=401, detail="Mobile build worker token is not configured.")
     presented = str(x_mobile_worker_token or "").strip()
@@ -225,4 +225,3 @@ def mobile_runtime_config(tenant_id: str):
         "feature_flags": tenant.get("feature_flags") or {},
         "update_manifest": get_mobile_runtime_manifest(tenant_id),
     }
-

@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -5,6 +6,7 @@ from pydantic import BaseModel
 
 from app.branding_engine import get_branding_response, process_logo_upload, rebuild_branding_assets
 from app.storage import (
+    _normalize_tenant_id,
     authenticate_tenant_admin,
     create_tenant_access_token,
     get_branding_config,
@@ -18,17 +20,26 @@ from app.storage import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("football_iptv.tenant")
 
 
 def _resolve_requested_tenant(
     authorization: Optional[str] = None,
     tenant_id: Optional[str] = None,
 ) -> str:
+    requested_tenant_id = str(tenant_id or "").strip()
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
         try:
             payload = validate_tenant_access_token(token)
             resolved = str(payload.get("tenant_id") or "").strip()
+            if requested_tenant_id and _normalize_tenant_id(requested_tenant_id) != _normalize_tenant_id(resolved):
+                logger.warning(
+                    "Token tenant %s does not match request tenant %s for tenant route",
+                    _normalize_tenant_id(resolved),
+                    _normalize_tenant_id(requested_tenant_id),
+                )
+                raise HTTPException(status_code=401, detail="Token tenant does not match requested tenant.")
             if resolved:
                 return resolved
         except ValueError:
@@ -37,12 +48,17 @@ def _resolve_requested_tenant(
             except ValueError as exc:
                 raise HTTPException(status_code=401, detail=str(exc)) from exc
             admin_tenant_id = str(admin.get("tenant_id") or "").strip()
-            if str(admin.get("role") or "").strip().lower() == "master" and tenant_id:
-                return tenant_id
+            if requested_tenant_id and _normalize_tenant_id(requested_tenant_id) != _normalize_tenant_id(admin_tenant_id):
+                logger.warning(
+                    "Token tenant %s does not match request tenant %s for tenant route",
+                    _normalize_tenant_id(admin_tenant_id),
+                    _normalize_tenant_id(requested_tenant_id),
+                )
+                raise HTTPException(status_code=401, detail="Token tenant does not match requested tenant.")
             if admin_tenant_id:
                 return admin_tenant_id
-    if tenant_id:
-        return tenant_id
+    if requested_tenant_id:
+        return requested_tenant_id
     raise HTTPException(status_code=400, detail="tenant_id is required.")
 
 
@@ -67,11 +83,23 @@ class TenantLoginPayload(BaseModel):
 
 @router.post("/login")
 def tenant_login(payload: TenantLoginPayload):
+    logger.info("Tenant login requested for tenant_id=%s username=%s", payload.tenant_id, payload.username)
     try:
         tenant = authenticate_tenant_admin(payload.tenant_id, payload.username, payload.password)
         token = create_tenant_access_token(str(tenant.get("tenant_id") or ""), payload.username)
     except ValueError as exc:
+        logger.warning(
+            "Tenant login failed for tenant_id=%s username=%s: %s",
+            payload.tenant_id,
+            payload.username,
+            str(exc),
+        )
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    logger.info(
+        "Tenant login succeeded for tenant_id=%s username=%s",
+        str(tenant.get("tenant_id") or ""),
+        payload.username,
+    )
     return {
         "token": token["token"],
         "expires_at": token["expires_at"],

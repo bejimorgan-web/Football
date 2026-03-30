@@ -744,7 +744,7 @@ def mobile_build_preflight() -> Dict[str, object]:
         severity="info",
     )
 
-    token_present = bool(str(os.environ.get("MOBILE_BUILD_WORKER_TOKEN") or "").strip())
+    token_present = bool(str(os.getenv("MOBILE_BUILD_WORKER_TOKEN") or "").strip())
     add_check(
         "worker_token",
         token_present,
