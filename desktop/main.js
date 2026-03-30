@@ -227,6 +227,11 @@ async function testApiEndpointConnection(kind, draft = {}) {
   const text = await response.text();
   const payload = text ? safeJsonParse(text) : {};
   if (!response.ok) {
+    if (response.status === 401) {
+      writeDesktopLog(
+        `Backend 401 for ${pathname} auth_present=${Boolean(authToken)} device_present=${Boolean(headers["X-Device-Id"])} server_present=${Boolean(headers["X-Server-Id"])} tenant=${String(session?.tenantId || settings?.tenantId || "default")}`,
+      );
+    }
     const detail = payload?.detail || payload?.message || text || `Request failed with status ${response.status}.`;
     throw new Error(detail);
   }

@@ -219,6 +219,8 @@ const el = {
   mobileBuildErrorLabel: $("mobileBuildErrorLabel"),
   mobileBuildPreflightSummary: $("mobileBuildPreflightSummary"),
   mobileBuildPreflightOutput: $("mobileBuildPreflightOutput"),
+  mobileBuildAuthSummary: $("mobileBuildAuthSummary"),
+  mobileBuildAuthOutput: $("mobileBuildAuthOutput"),
   mobileBuildLogsOutput: $("mobileBuildLogsOutput"),
   clearMobileBuildLogsButton: $("clearMobileBuildLogsButton"),
   copyMobileBuildLogsButton: $("copyMobileBuildLogsButton"),
@@ -1245,6 +1247,10 @@ function renderPlatformClients() {
 function renderMobileBuilds() {
   const status = state.mobileBuilder.status || { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" };
   const preflight = state.mobileBuilder.preflight || { ready: null, checks: [] };
+  const session = state.session || {};
+  const backendApi = state.settings?.backendApi || {};
+  const authToken = String(session.apiToken || backendApi.apiToken || "").trim();
+  const usingFallbackEndpointToken = !String(session.apiToken || "").trim() && Boolean(String(backendApi.apiToken || "").trim());
   const rawLogs = String(status.logs || "");
   const visibleLogs = rawLogs && rawLogs === mobileBuildLogsHiddenSnapshot ? "" : rawLogs;
   if (rawLogs && rawLogs !== mobileBuildLogsHiddenSnapshot) {
@@ -1273,6 +1279,27 @@ function renderMobileBuilds() {
     el.mobileBuildPreflightOutput.textContent = checks.length
       ? checks.map((item) => `[${item.ok ? "OK" : item.severity === "info" ? "INFO" : "ERROR"}] ${item.name}: ${item.detail}`).join("\n")
       : "No readiness details yet.";
+  }
+  if (el.mobileBuildAuthSummary) {
+    const authState = authToken ? "Authenticated token present." : "No bearer token available for admin-protected calls.";
+    const tenantState = ` Tenant: ${session.tenantId || state.settings?.tenantId || "default"}.`;
+    const serverState = ` Server ID: ${session.serverId || "-"}.`;
+    el.mobileBuildAuthSummary.textContent = `${authState}${tenantState}${serverState}`;
+  }
+  if (el.mobileBuildAuthOutput) {
+    el.mobileBuildAuthOutput.textContent = [
+      `[INFO] session.adminId: ${session.adminId || "-"}`,
+      `[INFO] session.role: ${session.role || "-"}`,
+      `[INFO] session.tenantId: ${session.tenantId || "-"}`,
+      `[INFO] session.adminEmail: ${session.adminEmail || "-"}`,
+      `[INFO] session.apiToken_present: ${String(Boolean(String(session.apiToken || "").trim()))}`,
+      `[INFO] backendApi.apiToken_present: ${String(Boolean(String(backendApi.apiToken || "").trim()))}`,
+      `[INFO] auth_source: ${usingFallbackEndpointToken ? "backend endpoint token fallback" : authToken ? "session api token" : "none"}`,
+      `[INFO] session.deviceId: ${session.deviceId || "-"}`,
+      `[INFO] session.serverId: ${session.serverId || "-"}`,
+      `[INFO] backendApi.url: ${backendApi.url || state.settings?.backendUrl || "-"}`,
+      `[INFO] settings.tenantId: ${state.settings?.tenantId || "default"}`,
+    ].join("\n");
   }
   if (el.mobileBuildLogsOutput) {
     const shouldPinToBottom = mobileBuildLogsShouldAutoScroll || isScrolledNearBottom(el.mobileBuildLogsOutput);
