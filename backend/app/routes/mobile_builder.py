@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 
@@ -18,6 +19,7 @@ from app.mobile_builder import (
     get_build_for_worker,
     get_build_status,
     list_build_history,
+    mobile_build_preflight,
     queue_mobile_build,
     update_build_from_worker,
 )
@@ -25,6 +27,7 @@ from app.storage import get_branding_config, get_mobile_runtime_manifest
 
 router = APIRouter()
 ADMIN_ACCESS = Depends(require_role("master", "client"))
+logger = logging.getLogger("football_iptv.mobile_builder.routes")
 
 
 class WorkerClaimPayload(BaseModel):
@@ -44,6 +47,7 @@ class WorkerArtifactPayload(BaseModel):
     artifact_storage: str = "local"
     artifact_key: str = ""
     artifact_url: str = ""
+    artifact_data_base64: str = ""
 
 
 def _require_mobile_worker_token(x_mobile_worker_token: str | None = Header(default=None)):
@@ -64,12 +68,19 @@ def _queue_build_for_current_user(current_user: dict):
         job = queue_mobile_build(admin_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected mobile build queue failure for admin_id=%s", admin_id)
+        raise HTTPException(status_code=500, detail="Unable to queue mobile build.") from exc
     return job
 
 
 @router.post("/build")
-def create_mobile_build():
-    return queue_mobile_build("test-admin")
+def create_mobile_build(current_user: dict = ADMIN_ACCESS):
+    try:
+        return _queue_build_for_current_user(current_user)
+    except Exception as e:
+        logger.exception("Failed to create mobile build")
+        raise HTTPException(status_code=500, detail="Failed to queue build")
 
 @router.post("/generate")
 def generate_mobile_build(current_user: dict = ADMIN_ACCESS):
@@ -79,6 +90,14 @@ def generate_mobile_build(current_user: dict = ADMIN_ACCESS):
 @router.post("/generate-app")
 def generate_mobile_app(current_user: dict = ADMIN_ACCESS):
     return _queue_build_for_current_user(current_user)
+
+
+@router.get("/preflight")
+def mobile_build_preflight_status(current_user: dict = ADMIN_ACCESS):
+    return {
+        "admin_id": str(current_user.get("admin_id") or ""),
+        **mobile_build_preflight(),
+    }
 
 
 @router.get("/build/status/{build_id}")

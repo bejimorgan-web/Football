@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import logging
 import os
+from pathlib import Path
 import socket
 import time
 
@@ -121,6 +123,16 @@ def _process_remote_job(client: httpx.Client, job: dict) -> None:
             admin_id=str(job.get("admin_id") or ""),
             log_path=log_path,
         )
+        workspace_apk_path = str(result.get("workspace_apk_path") or "").strip()
+        artifact_storage = str(result.get("artifact_storage") or "").strip().lower()
+        if workspace_apk_path and artifact_storage == "local":
+            result = {
+                **result,
+                "artifact_data_base64": base64.b64encode(Path(workspace_apk_path).read_bytes()).decode("ascii"),
+                "artifact_path": "",
+                "artifact_key": "",
+                "artifact_url": "",
+            }
         client.post(f"/mobile/worker/build/{build_id}/complete", json=result)
     except BuildCancelledError as exc:
         client.post(f"/mobile/worker/build/{build_id}/fail", json={"status": "cancelled", "error": str(exc)})

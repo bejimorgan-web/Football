@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -14,7 +15,12 @@ from uuid import uuid4
 
 import requests
 
-from app.mobile_build_artifacts import resolve_mobile_build_download, store_mobile_build_artifact
+from app.mobile_build_artifacts import (
+    artifact_storage_backend,
+    resolve_mobile_build_download,
+    store_mobile_build_artifact,
+    store_mobile_build_artifact_bytes,
+)
 from app.mobile_build_store import (
     append_mobile_build_log,
     claim_next_mobile_build_job,
@@ -32,6 +38,8 @@ from app.storage import (
     get_tenant,
     update_tenant_mobile_app_status,
 )
+
+logger = logging.getLogger("football_iptv.mobile_builder")
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_ROOT.parent
@@ -590,54 +598,159 @@ def _builds_today(admin_id: str) -> int:
 
 
 def queue_mobile_build(admin_id: str) -> Dict[str, object]:
-    ensure_mobile_builder_storage()
-    if _builds_today(admin_id) >= MAX_BUILDS_PER_DAY:
-        raise ValueError("Daily build limit reached. Maximum 5 builds per day.")
-    if not PRIMARY_MOBILE_PROJECT_DIR.exists():
-        raise ValueError("mobile directory is missing.")
-    tenant_state = _tenant_mobile_app_state(admin_id)
-    if tenant_state["mobile_app_generated"]:
-        raise ValueError("Mobile application already generated for this tenant.")
-    existing_job = next(
-        (
-            item for item in _load_jobs()
-            if str(item.get("admin_id") or "") == admin_id
-            and str(item.get("status") or "") in {"queued", "building", "completed"}
-        ),
-        None,
-    )
-    if existing_job is not None:
-        if str(existing_job.get("status") or "") == "completed":
+    logger.info("Queueing mobile build for admin_id=%s", admin_id)
+    try:
+        ensure_mobile_builder_storage()
+        if _builds_today(admin_id) >= MAX_BUILDS_PER_DAY:
+            raise ValueError("Daily build limit reached. Maximum 5 builds per day.")
+        if not PRIMARY_MOBILE_PROJECT_DIR.exists():
+            raise ValueError("mobile directory is missing.")
+        tenant_state = _tenant_mobile_app_state(admin_id)
+        if tenant_state["mobile_app_generated"]:
             raise ValueError("Mobile application already generated for this tenant.")
-        raise ValueError("Mobile application generation is already in progress for this tenant.")
-    branding = _resolve_branding(admin_id)
-    build_id = uuid4().hex
-    created_at = utc_now_iso()
-    job = {
-        "build_id": build_id,
-        "admin_id": admin_id,
-        "tenant_id": branding["tenant_id"],
-        "status": "queued",
-        "progress": 5,
-        "created_at": created_at,
-        "updated_at": created_at,
-        "version": _next_version_for_admin(admin_id),
-        "app_name": branding["app_name"],
-        "package_name": branding["package_name"],
-        "server_url": branding["server_url"],
-        "primary_color": branding["primary_color"],
-        "secondary_color": branding["secondary_color"],
-        "logo_file": branding["logo_file"],
-        "splash_screen": branding["splash_screen"],
-        "artifact_name": "",
-        "artifact_path": "",
-        "error": "",
-        "log_path": str((BUILD_LOGS_DIR / f"{build_id}.log").resolve()),
+        existing_job = next(
+            (
+                item for item in _load_jobs()
+                if str(item.get("admin_id") or "") == admin_id
+                and str(item.get("status") or "") in {"queued", "building", "completed"}
+            ),
+            None,
+        )
+        if existing_job is not None:
+            if str(existing_job.get("status") or "") == "completed":
+                raise ValueError("Mobile application already generated for this tenant.")
+            raise ValueError("Mobile application generation is already in progress for this tenant.")
+        branding = _resolve_branding(admin_id)
+        build_id = uuid4().hex
+        created_at = utc_now_iso()
+        job = {
+            "build_id": build_id,
+            "admin_id": admin_id,
+            "tenant_id": branding["tenant_id"],
+            "status": "queued",
+            "progress": 5,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "version": _next_version_for_admin(admin_id),
+            "app_name": branding["app_name"],
+            "package_name": branding["package_name"],
+            "server_url": branding["server_url"],
+            "primary_color": branding["primary_color"],
+            "secondary_color": branding["secondary_color"],
+            "logo_file": branding["logo_file"],
+            "splash_screen": branding["splash_screen"],
+            "artifact_name": "",
+            "artifact_path": "",
+            "error": "",
+            "log_path": str((BUILD_LOGS_DIR / f"{build_id}.log").resolve()),
+        }
+        create_mobile_build_job(job)
+        _sync_version_history_entry(job)
+        JOB_EVENT.set()
+        logger.info(
+            "Queued mobile build build_id=%s admin_id=%s tenant_id=%s",
+            build_id,
+            admin_id,
+            str(branding["tenant_id"]),
+        )
+        return job
+    except ValueError:
+        raise
+    except Exception:
+        logger.exception("Unexpected failure while queueing mobile build for admin_id=%s", admin_id)
+        raise
+
+
+def mobile_build_preflight() -> Dict[str, object]:
+    checks: List[Dict[str, object]] = []
+
+    def add_check(name: str, ok: bool, detail: str, *, severity: str = "error") -> None:
+        checks.append(
+            {
+                "name": name,
+                "ok": bool(ok),
+                "severity": severity,
+                "detail": str(detail),
+            }
+        )
+
+    add_check(
+        "mobile_project",
+        PRIMARY_MOBILE_PROJECT_DIR.exists(),
+        f"Mobile project directory {'found' if PRIMARY_MOBILE_PROJECT_DIR.exists() else 'missing'} at {PRIMARY_MOBILE_PROJECT_DIR}",
+    )
+
+    db_backend = "postgres" if os.environ.get("MOBILE_BUILD_DATABASE_URL") or os.environ.get("DATABASE_URL") else "sqlite"
+    try:
+        ensure_mobile_build_store()
+        add_check("database", True, f"{db_backend} mobile build store is reachable.")
+    except Exception as exc:
+        add_check("database", False, f"{db_backend} mobile build store failed: {exc}")
+
+    worker_enabled = mobile_build_worker_enabled()
+    add_check(
+        "worker_mode",
+        True,
+        "Embedded worker is enabled on this host." if worker_enabled else "Queue-only mode on this host; a dedicated worker must be running separately.",
+        severity="info",
+    )
+
+    token_present = bool(str(os.environ.get("MOBILE_BUILD_WORKER_TOKEN") or "").strip())
+    add_check(
+        "worker_token",
+        token_present,
+        "Mobile build worker token is configured." if token_present else "MOBILE_BUILD_WORKER_TOKEN is missing.",
+    )
+
+    artifact_backend = artifact_storage_backend()
+    if artifact_backend == "s3":
+        bucket = bool(str(os.environ.get("MOBILE_BUILD_S3_BUCKET") or "").strip())
+        add_check(
+            "artifact_storage",
+            bucket,
+            "S3 artifact storage is configured." if bucket else "MOBILE_BUILD_S3_BUCKET is required when artifact storage is s3.",
+        )
+    else:
+        add_check(
+            "artifact_storage",
+            True,
+            "Local artifact storage is enabled. Remote workers will upload completed APKs back to the API.",
+            severity="info",
+        )
+
+    if worker_enabled:
+        try:
+            docker_executable = _ensure_docker_available()
+            docker_info = subprocess.run(
+                [docker_executable, "info"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=False,
+                timeout=30,
+            )
+            if docker_info.returncode == 0:
+                add_check("docker", True, f"Docker daemon is reachable via {docker_executable}.")
+            else:
+                detail = docker_info.stderr.strip() or docker_info.stdout.strip() or "docker info failed."
+                add_check("docker", False, f"Docker daemon check failed: {detail}")
+        except Exception as exc:
+            add_check("docker", False, f"Docker check failed: {exc}")
+    else:
+        add_check(
+            "docker",
+            True,
+            "Docker check skipped on queue-only host.",
+            severity="info",
+        )
+
+    ready = all(bool(item.get("ok")) for item in checks)
+    return {
+        "ready": ready,
+        "worker_enabled_on_host": worker_enabled,
+        "artifact_storage": artifact_backend,
+        "checks": checks,
     }
-    create_mobile_build_job(job)
-    _sync_version_history_entry(job)
-    JOB_EVENT.set()
-    return job
 
 
 def list_build_history(admin_id: str) -> List[Dict[str, object]]:
@@ -697,16 +810,31 @@ def update_build_from_worker(build_id: str, patch: Dict[str, object]) -> Dict[st
 def complete_build_from_worker(build_id: str, artifact: Dict[str, str]) -> Dict[str, object]:
     job = get_build_for_worker(build_id)
     artifact_name = str(artifact.get("artifact_name") or "")
-    updated = _update_job(
-        build_id,
-        {
-            "status": "completed",
-            "progress": 100,
+    artifact_bytes_b64 = str(artifact.get("artifact_data_base64") or "").strip()
+    if artifact_bytes_b64:
+        stored_artifact = store_mobile_build_artifact_bytes(
+            tenant_id=str(job.get("tenant_id") or ""),
+            artifact_name=artifact_name or f"{build_id}.apk",
+            artifact_bytes_b64=artifact_bytes_b64,
+        )
+    else:
+        stored_artifact = {
             "artifact_name": artifact_name,
             "artifact_path": str(artifact.get("artifact_path") or ""),
             "artifact_storage": str(artifact.get("artifact_storage") or "local"),
             "artifact_key": str(artifact.get("artifact_key") or ""),
             "artifact_url": str(artifact.get("artifact_url") or ""),
+        }
+    updated = _update_job(
+        build_id,
+        {
+            "status": "completed",
+            "progress": 100,
+            "artifact_name": str(stored_artifact.get("artifact_name") or artifact_name),
+            "artifact_path": str(stored_artifact.get("artifact_path") or ""),
+            "artifact_storage": str(stored_artifact.get("artifact_storage") or "local"),
+            "artifact_key": str(stored_artifact.get("artifact_key") or ""),
+            "artifact_url": str(stored_artifact.get("artifact_url") or ""),
             "updated_at": utc_now_iso(),
             "completed_at": utc_now_iso(),
             "error": "",
@@ -725,7 +853,7 @@ def complete_build_from_worker(build_id: str, artifact: Dict[str, str]) -> Dict[
         logo_url=str(job.get("logo_file") or ""),
         theme_color=str(job.get("primary_color") or ""),
         generated_at=utc_now_iso(),
-        artifact_name=artifact_name,
+        artifact_name=str(stored_artifact.get("artifact_name") or artifact_name),
         build_id=build_id,
     )
     return updated

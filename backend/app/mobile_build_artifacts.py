@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import shutil
 from pathlib import Path
@@ -20,6 +21,27 @@ def store_mobile_build_artifact(*, tenant_id: str, artifact_name: str, source_ap
     if backend == "s3":
         return _store_mobile_build_artifact_s3(tenant_id=tenant_id, artifact_name=artifact_name, source_apk=source_apk)
     return _store_mobile_build_artifact_local(tenant_id=tenant_id, artifact_name=artifact_name, source_apk=source_apk)
+
+
+def store_mobile_build_artifact_bytes(*, tenant_id: str, artifact_name: str, artifact_bytes_b64: str) -> Dict[str, str]:
+    raw = str(artifact_bytes_b64 or "").strip()
+    if not raw:
+        raise ValueError("artifact_data_base64 is required.")
+    try:
+        artifact_bytes = base64.b64decode(raw, validate=True)
+    except Exception as exc:
+        raise ValueError("artifact_data_base64 is not valid base64 data.") from exc
+    target_dir = LOCAL_ARTIFACTS_ROOT / tenant_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / artifact_name
+    target_path.write_bytes(artifact_bytes)
+    return {
+        "artifact_name": artifact_name,
+        "artifact_path": str(target_path.resolve()),
+        "artifact_storage": "local",
+        "artifact_key": str(Path(tenant_id) / artifact_name).replace("\\", "/"),
+        "artifact_url": "",
+    }
 
 
 def resolve_mobile_build_download(job: Dict[str, object]) -> Dict[str, str]:
