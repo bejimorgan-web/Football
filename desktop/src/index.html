@@ -458,6 +458,20 @@
             <section class="card section-card">
               <div class="pane-header">
                 <div>
+                  <h3>Build Readiness</h3>
+                  <p>Checks backend queueing, storage, worker mode, and Docker readiness before APK generation.</p>
+                </div>
+                <div class="form-actions">
+                  <button class="ghost-button small-button" id="clearMobileBuildPreflightButton" type="button">Clear Readiness</button>
+                  <button class="ghost-button small-button" id="refreshMobileBuildPreflightButton" type="button">Refresh Readiness</button>
+                </div>
+              </div>
+              <p id="mobileBuildPreflightSummary" class="subtle">Readiness checks have not been loaded yet.</p>
+              <pre id="mobileBuildPreflightOutput" class="log-output">No readiness details yet.</pre>
+            </section>
+            <section class="card section-card">
+              <div class="pane-header">
+                <div>
                   <h3>Build Logs</h3>
                   <p>Full stdout and stderr from the Flutter APK build worker.</p>
                 </div>

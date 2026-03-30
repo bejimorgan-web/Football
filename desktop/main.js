@@ -1208,6 +1208,7 @@ function setupIpcHandlers() {
   backendGet("backend:white-label-installs", "/admin/platform_clients/dashboard");
   backendGet("backend:white-label-subscriptions", "/admin/platform_clients/analytics");
   backendPost("backend:mobile-build", "/mobile/generate-app");
+  backendGet("backend:mobile-build-preflight", "/mobile/preflight");
   ipcMain.handle("backend:mobile-build-cancel", async (_, buildId) => callBackend(`/mobile/build/cancel/${encodeURIComponent(buildId || "")}`, { method: "POST" }));
   ipcMain.handle("backend:mobile-build-status", async (_, buildId) => callBackend(`/mobile/build/status/${encodeURIComponent(buildId || "")}`));
   ipcMain.handle("backend:mobile-build-history", async () => callBackend("/mobile/build/history"));

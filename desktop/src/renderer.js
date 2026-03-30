@@ -41,7 +41,13 @@ const state = {
   masterLive: { status: "idle", version: null, streams: { items: [] }, liveScores: { matches: [] }, standings: { standings: [] }, fixtures: { matches: [] }, lastUpdatedAt: "", error: "" },
   platformClients: { items: [], stats: {}, audit_logs: [] },
   security: { flagged_devices: [], vpn_users: [], suspicious_ip_changes: [], blocked_devices: [], active_sessions: [], security_logs: [] },
-  mobileBuilder: { history: [], latest: null, activeBuildId: "", status: { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" } },
+  mobileBuilder: {
+    history: [],
+    latest: null,
+    activeBuildId: "",
+    status: { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" },
+    preflight: { ready: null, checks: [], artifact_storage: "", worker_enabled_on_host: false },
+  },
   apkManagement: { items: [], latest: null },
   updateInfo: { history: [], latest: null, dismissed: false, state: { status: "idle", currentVersion: "" } },
   groups: [],
@@ -203,12 +209,16 @@ const el = {
   generateMobileApkButton: $("generateMobileApkButton"),
   cancelMobileBuildButton: $("cancelMobileBuildButton"),
   refreshMobileBuildsButton: $("refreshMobileBuildsButton"),
+  clearMobileBuildPreflightButton: $("clearMobileBuildPreflightButton"),
+  refreshMobileBuildPreflightButton: $("refreshMobileBuildPreflightButton"),
   mobileBuildStatusLabel: $("mobileBuildStatusLabel"),
   mobileBuildProgressText: $("mobileBuildProgressText"),
   mobileBuildVersionLabel: $("mobileBuildVersionLabel"),
   mobileBuildArtifactLabel: $("mobileBuildArtifactLabel"),
   mobileBuildProgressBar: $("mobileBuildProgressBar"),
   mobileBuildErrorLabel: $("mobileBuildErrorLabel"),
+  mobileBuildPreflightSummary: $("mobileBuildPreflightSummary"),
+  mobileBuildPreflightOutput: $("mobileBuildPreflightOutput"),
   mobileBuildLogsOutput: $("mobileBuildLogsOutput"),
   clearMobileBuildLogsButton: $("clearMobileBuildLogsButton"),
   copyMobileBuildLogsButton: $("copyMobileBuildLogsButton"),
@@ -1234,6 +1244,7 @@ function renderPlatformClients() {
 
 function renderMobileBuilds() {
   const status = state.mobileBuilder.status || { status: "idle", progress: 0, version: "", artifact_name: "", error: "", logs: "" };
+  const preflight = state.mobileBuilder.preflight || { ready: null, checks: [] };
   const rawLogs = String(status.logs || "");
   const visibleLogs = rawLogs && rawLogs === mobileBuildLogsHiddenSnapshot ? "" : rawLogs;
   if (rawLogs && rawLogs !== mobileBuildLogsHiddenSnapshot) {
@@ -1248,6 +1259,20 @@ function renderMobileBuilds() {
     el.mobileBuildErrorLabel.textContent = status.error || (mobileAppAlreadyGenerated()
       ? "Mobile app already generated. Branding changes now refresh dynamically in the installed app."
       : "Builds are queued and processed one at a time.");
+  }
+  if (el.mobileBuildPreflightSummary) {
+    const readyLabel = preflight.ready === true ? "Ready to build." : preflight.ready === false ? "Not ready to build." : "Readiness checks have not been loaded yet.";
+    const storageLabel = preflight.artifact_storage ? ` Artifact storage: ${preflight.artifact_storage}.` : "";
+    const hostLabel = preflight.ready !== null
+      ? ` Host mode: ${preflight.worker_enabled_on_host ? "embedded worker" : "queue-only"}`
+      : "";
+    el.mobileBuildPreflightSummary.textContent = `${readyLabel}${storageLabel}${hostLabel}`;
+  }
+  if (el.mobileBuildPreflightOutput) {
+    const checks = Array.isArray(preflight.checks) ? preflight.checks : [];
+    el.mobileBuildPreflightOutput.textContent = checks.length
+      ? checks.map((item) => `[${item.ok ? "OK" : item.severity === "info" ? "INFO" : "ERROR"}] ${item.name}: ${item.detail}`).join("\n")
+      : "No readiness details yet.";
   }
   if (el.mobileBuildLogsOutput) {
     const shouldPinToBottom = mobileBuildLogsShouldAutoScroll || isScrolledNearBottom(el.mobileBuildLogsOutput);
@@ -1672,6 +1697,26 @@ async function refreshMobileBuilds() {
   renderMobileBuilds();
 }
 
+async function refreshMobileBuildPreflight() {
+  state.mobileBuilder.preflight = await window.desktopApi.fetchMobileBuildPreflight().catch(() => ({
+    ready: false,
+    checks: [{ name: "preflight", ok: false, severity: "error", detail: "Could not load mobile build readiness from backend." }],
+    artifact_storage: "",
+    worker_enabled_on_host: false,
+  }));
+  renderMobileBuilds();
+}
+
+function clearMobileBuildPreflight() {
+  state.mobileBuilder.preflight = {
+    ready: null,
+    checks: [],
+    artifact_storage: "",
+    worker_enabled_on_host: false,
+  };
+  renderMobileBuilds();
+}
+
 async function refreshApkManagement() {
   if (!isMasterRole()) {
     state.apkManagement = { items: [], latest: null };
@@ -1748,6 +1793,7 @@ async function refreshVisibleSectionData(section = state.activeSection) {
       return;
     case "mobile_builder":
       await refreshMobileBuilds();
+      await refreshMobileBuildPreflight();
       if (isMasterRole()) {
         await refreshApkManagement();
       }
@@ -2110,6 +2156,11 @@ el.saveMobileAppSettingsButton?.addEventListener("click", async () => {
 
 el.generateMobileApkButton?.addEventListener("click", async () => {
   try {
+    await refreshMobileBuildPreflight();
+    if (state.mobileBuilder.preflight?.ready === false) {
+      showToast("Mobile build is not ready yet. Open the readiness panel for the failing checks.", true);
+      return;
+    }
     if (mobileAppAlreadyGenerated()) {
       showToast("Mobile application already created. You can modify branding but cannot generate a new app.", true);
       return;
@@ -2144,11 +2195,25 @@ el.cancelMobileBuildButton?.addEventListener("click", async () => {
 
 el.refreshMobileBuildsButton?.addEventListener("click", async () => {
   try {
-    await refreshMobileBuilds();
+    await Promise.all([refreshMobileBuilds(), refreshMobileBuildPreflight()]);
     showToast("Mobile builds refreshed.");
   } catch (error) {
     showToast(error.message, true);
   }
+});
+
+el.refreshMobileBuildPreflightButton?.addEventListener("click", async () => {
+  try {
+    await refreshMobileBuildPreflight();
+    showToast("Build readiness refreshed.");
+  } catch (error) {
+    showToast(error.message, true);
+  }
+});
+
+el.clearMobileBuildPreflightButton?.addEventListener("click", () => {
+  clearMobileBuildPreflight();
+  showToast("Build readiness cleared.");
 });
 
 el.mobileBuildLogsOutput?.addEventListener("scroll", () => {

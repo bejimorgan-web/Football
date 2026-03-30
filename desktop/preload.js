@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
   fetchWhiteLabelInstalls: () => ipcRenderer.invoke("backend:white-label-installs"),
   fetchWhiteLabelSubscriptions: () => ipcRenderer.invoke("backend:white-label-subscriptions"),
   createMobileBuild: () => ipcRenderer.invoke("backend:mobile-build"),
+  fetchMobileBuildPreflight: () => ipcRenderer.invoke("backend:mobile-build-preflight"),
   cancelMobileBuild: (buildId) => ipcRenderer.invoke("backend:mobile-build-cancel", buildId),
   fetchMobileBuildStatus: (buildId) => ipcRenderer.invoke("backend:mobile-build-status", buildId),
   fetchMobileBuildHistory: () => ipcRenderer.invoke("backend:mobile-build-history"),

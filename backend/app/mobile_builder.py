@@ -661,6 +661,55 @@ def queue_mobile_build(admin_id: str) -> Dict[str, object]:
         raise
 
 
+def _docker_preflight_status() -> tuple[bool, str]:
+    try:
+        docker_executable = _ensure_docker_available()
+    except Exception as exc:
+        return False, f"Docker CLI check failed: {exc}"
+
+    try:
+        docker_info = subprocess.run(
+            [docker_executable, "info"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=False,
+            timeout=30,
+        )
+    except Exception as exc:
+        return False, f"Docker daemon check failed: {exc}"
+
+    stderr = (docker_info.stderr or "").strip()
+    stdout = (docker_info.stdout or "").strip()
+    combined = "\n".join(part for part in (stderr, stdout) if part).strip()
+
+    if docker_info.returncode == 0:
+        if "Error loading config file" in combined and "Access is denied" in combined:
+            return True, (
+                f"Docker daemon is reachable via {docker_executable}, but Docker user config is not readable. "
+                "Check permissions on %USERPROFILE%\\.docker\\config.json."
+            )
+        return True, f"Docker daemon is reachable via {docker_executable}."
+
+    lowered = combined.lower()
+    if "permission denied while trying to connect to the docker api" in lowered:
+        return False, (
+            "Docker CLI can run, but this user cannot access the Docker daemon. "
+            "Make sure Docker Desktop is fully started, the engine is running, and this user has Docker pipe access "
+            "(often via the docker-users group on Windows)."
+        )
+    if "error loading config file" in lowered and "access is denied" in lowered:
+        return False, (
+            "Docker user config is not readable. Check permissions on %USERPROFILE%\\.docker\\config.json "
+            "and retry after Docker Desktop is running."
+        )
+    if "cannot connect to the docker daemon" in lowered:
+        return False, "Docker daemon is not running or not reachable from this session."
+    if "the system cannot find the file specified" in lowered and "docker_engine" in lowered:
+        return False, "Docker named pipe is missing. Docker Desktop may not be fully started."
+    return False, f"Docker daemon check failed: {combined or 'docker info failed.'}"
+
+
 def mobile_build_preflight() -> Dict[str, object]:
     checks: List[Dict[str, object]] = []
 
@@ -719,23 +768,8 @@ def mobile_build_preflight() -> Dict[str, object]:
         )
 
     if worker_enabled:
-        try:
-            docker_executable = _ensure_docker_available()
-            docker_info = subprocess.run(
-                [docker_executable, "info"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=False,
-                timeout=30,
-            )
-            if docker_info.returncode == 0:
-                add_check("docker", True, f"Docker daemon is reachable via {docker_executable}.")
-            else:
-                detail = docker_info.stderr.strip() or docker_info.stdout.strip() or "docker info failed."
-                add_check("docker", False, f"Docker daemon check failed: {detail}")
-        except Exception as exc:
-            add_check("docker", False, f"Docker check failed: {exc}")
+        docker_ok, docker_detail = _docker_preflight_status()
+        add_check("docker", docker_ok, docker_detail)
     else:
         add_check(
             "docker",
