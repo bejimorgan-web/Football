@@ -253,6 +253,7 @@ class ProviderStore {
       cacheTtlSeconds: Number(provider.cacheTtlSeconds || 300),
       isActive: provider.isActive ? 1 : 0,
     };
+    const existingProviders = this.state.providers.filter((item) => item.ownerAdminId === normalizedAdminId);
 
     if (!normalizedProvider.name) {
       throw new Error("Provider name is required.");
@@ -269,6 +270,10 @@ class ProviderStore {
       normalizedProvider.xtreamServerUrl = "";
       normalizedProvider.xtreamUsername = "";
       normalizedProvider.xtreamPassword = "";
+    }
+
+    if (!existingProviders.length) {
+      normalizedProvider.isActive = 1;
     }
 
     if (normalizedProvider.isActive) {

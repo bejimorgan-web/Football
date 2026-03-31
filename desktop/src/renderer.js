@@ -1618,6 +1618,10 @@ function populateEntitySelectors() {
 }
 
 function openEntityModal(type, item = null) {
+  if (type !== "nation" && !state.nations.length) {
+    showToast("Create a nation first.", true);
+    return;
+  }
   el.entityTypeInput.value = type;
   el.entityIdInput.value = item?.id || "";
   el.entityNameInput.value = item?.name || "";
@@ -2391,6 +2395,7 @@ el.entityForm.addEventListener("submit", async (event) => {
   const type = el.entityTypeInput.value;
   const name = el.entityNameInput.value.trim();
   if (!name) return showToast("Name is required.", true);
+  if (type !== "nation" && !el.entityNationSelect.value) return showToast("Select a nation first.", true);
   try {
     const logoUrl = (await uploadSelectedLogo(type, name)) || el.entityLogoPreview.dataset.logoUrl || "";
     if (type === "nation") await window.desktopApi.saveNation({ id: el.entityIdInput.value || null, name, logo_url: logoUrl });

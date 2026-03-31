@@ -1136,10 +1136,13 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("backend:fetch-streams", async (_, providerId) => {
     const settings = await providerStore.getSettings();
-    const providerQuery = providerId ? `?provider_id=${encodeURIComponent(providerId)}` : "";
-    const payload = await callBackend(withTenant(`/admin/streams${providerQuery}`, settings));
-    const providerGroups = await callBackend(withTenant(`/provider/groups${providerQuery}`, settings)).catch(() => ({ items: [] }));
-    return { ...payload, groups: providerGroups.items || payload.groups || [] };
+    const normalizedProviderId = String(providerId || "").trim();
+    const providerQuery = normalizedProviderId && normalizedProviderId !== "active"
+      ? ""
+      : normalizedProviderId
+        ? `?provider_id=${encodeURIComponent(normalizedProviderId)}`
+        : "";
+    return callBackend(withTenant(`/admin/streams${providerQuery}`, settings));
   });
   backendGet("backend:fetch-approved", "/admin/streams/approved");
   backendGet("backend:fetch-users", "/admin/users");
