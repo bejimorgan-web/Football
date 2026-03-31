@@ -2226,8 +2226,25 @@ async function extendUser(user) {
 
 async function submitApproval() {
   if (!state.selectedChannel) return showToast("Select a stream first.", true);
+  const nationId = String(el.approveNationSelect.value || "").trim();
+  const competitionId = String(el.approveCompetitionSelect.value || "").trim();
+  const homeClubId = String(el.approveHomeClubSelect.value || "").trim();
+  const awayClubId = String(el.approveAwayClubSelect.value || "").trim();
+  const availableClubs = getClubOptions(competitionId);
+  if (!nationId) return showToast("Select a nation before approving this stream.", true);
+  if (!competitionId) return showToast("Select a competition before approving this stream.", true);
+  if (!availableClubs.length) return showToast("Link clubs to the selected competition first.", true);
+  if (!homeClubId || !awayClubId) return showToast("Select both the home club and away club.", true);
+  if (homeClubId === awayClubId) return showToast("Home club and away club must be different teams.", true);
   try {
-    await window.desktopApi.approveStream({ stream_id: String(state.selectedChannel.id || state.selectedChannel.stream_id), nation_id: el.approveNationSelect.value, competition_id: el.approveCompetitionSelect.value, home_club_id: el.approveHomeClubSelect.value, away_club_id: el.approveAwayClubSelect.value, kickoff_label: el.approveKickoffInput.value.trim() });
+    await window.desktopApi.approveStream({
+      stream_id: String(state.selectedChannel.id || state.selectedChannel.stream_id),
+      nation_id: nationId,
+      competition_id: competitionId,
+      home_club_id: homeClubId,
+      away_club_id: awayClubId,
+      kickoff_label: el.approveKickoffInput.value.trim(),
+    });
     await refreshApprovedMatches();
     renderChannels();
     renderPreview();
