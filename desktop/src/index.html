@@ -588,7 +588,9 @@
         <div class="field"><label for="entityNameInput">Name</label><input id="entityNameInput" type="text" required></div>
         <div class="field hidden" id="entityNationField"><label for="entityNationSelect">Nation</label><select id="entityNationSelect"></select></div>
         <div class="field hidden" id="entityCompetitionTypeField"><label for="entityCompetitionTypeSelect">Competition Type</label><select id="entityCompetitionTypeSelect"><option value="league">League</option><option value="cup">Cup</option></select></div>
-        <div class="field hidden" id="entityClubCompetitionField"><label for="entityClubCompetitionSelect">Default Competition</label><select id="entityClubCompetitionSelect"></select></div>
+        <div class="field hidden" id="entityCompetitionParticipantField"><label for="entityCompetitionParticipantSelect">Participants</label><select id="entityCompetitionParticipantSelect"><option value="clubs">Clubs</option><option value="nations">Nations</option></select></div>
+        <div class="field hidden" id="entityCompetitionClubAssignmentsField"><label>Competition Clubs</label><div id="entityCompetitionClubAssignments" class="list short-list"></div></div>
+        <div class="field hidden" id="entityClubCompetitionField"><label for="entityClubCompetitionSelect">Competition Mapping</label><select id="entityClubCompetitionSelect"></select></div>
         <div class="field"><label for="entityLogoFileInput">Logo Upload</label><input id="entityLogoFileInput" type="file" accept="image/*"></div>
         <div id="entityLogoPreview" class="asset-preview hidden"></div>
         <div class="form-actions"><button type="button" class="ghost-button" id="deleteEntityButton">Delete</button><button type="submit" class="primary-button">Save</button></div>

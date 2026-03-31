@@ -93,6 +93,8 @@ class CompetitionPayload(BaseModel):
     name: str
     nation_id: str
     type: str = "league"
+    participant_type: str = "clubs"
+    club_ids: List[str] = []
     logo_url: Optional[str] = ""
 
 
@@ -100,7 +102,6 @@ class ClubPayload(BaseModel):
     id: Optional[str] = None
     name: str
     nation_id: str
-    competition_id: Optional[str] = None
     logo_url: Optional[str] = ""
 
 
@@ -635,7 +636,10 @@ def create_or_update_nation(payload: NationPayload, request: Request, tenant_id:
 
 @router.delete("/nations/{nation_id}")
 def remove_nation(nation_id: str, request: Request, tenant_id: Optional[str] = Query(None), _: dict = ADMIN_ACCESS):
-    delete_nation(nation_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    try:
+        delete_nation(nation_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "deleted", "nation_id": nation_id}
 
 
@@ -652,6 +656,8 @@ def create_or_update_competition(payload: CompetitionPayload, request: Request, 
             name=payload.name,
             nation_id=payload.nation_id,
             competition_type=payload.type,
+            participant_type=payload.participant_type,
+            club_ids=payload.club_ids,
             logo_url=payload.logo_url or "",
             tenant_id=_scoped_tenant_id(request, tenant_id),
         )
@@ -662,7 +668,10 @@ def create_or_update_competition(payload: CompetitionPayload, request: Request, 
 
 @router.delete("/competitions/{competition_id}")
 def remove_competition(competition_id: str, request: Request, tenant_id: Optional[str] = Query(None), _: dict = ADMIN_ACCESS):
-    delete_competition(competition_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    try:
+        delete_competition(competition_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "deleted", "competition_id": competition_id}
 
 
@@ -684,7 +693,6 @@ def create_or_update_club(payload: ClubPayload, request: Request, tenant_id: Opt
             club_id=payload.id,
             name=payload.name,
             nation_id=payload.nation_id,
-            competition_id=payload.competition_id,
             logo_url=payload.logo_url or "",
             tenant_id=_scoped_tenant_id(request, tenant_id),
         )
@@ -695,7 +703,10 @@ def create_or_update_club(payload: ClubPayload, request: Request, tenant_id: Opt
 
 @router.delete("/clubs/{club_id}")
 def remove_club(club_id: str, request: Request, tenant_id: Optional[str] = Query(None), _: dict = ADMIN_ACCESS):
-    delete_club(club_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    try:
+        delete_club(club_id, tenant_id=_scoped_tenant_id(request, tenant_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "deleted", "club_id": club_id}
 
 

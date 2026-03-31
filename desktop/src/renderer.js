@@ -53,6 +53,7 @@ const state = {
   groups: [],
   selectedStreamProviderId: null,
   selectedNationId: null,
+  selectedCompetitionId: null,
   selectedGroup: null,
   selectedChannel: null,
   activeSection: "dashboard",
@@ -361,6 +362,10 @@ const el = {
   entityNationSelect: $("entityNationSelect"),
   entityCompetitionTypeField: $("entityCompetitionTypeField"),
   entityCompetitionTypeSelect: $("entityCompetitionTypeSelect"),
+  entityCompetitionParticipantField: $("entityCompetitionParticipantField"),
+  entityCompetitionParticipantSelect: $("entityCompetitionParticipantSelect"),
+  entityCompetitionClubAssignmentsField: $("entityCompetitionClubAssignmentsField"),
+  entityCompetitionClubAssignments: $("entityCompetitionClubAssignments"),
   entityClubCompetitionField: $("entityClubCompetitionField"),
   entityClubCompetitionSelect: $("entityClubCompetitionSelect"),
   entityLogoFileInput: $("entityLogoFileInput"),
@@ -823,6 +828,7 @@ function renderEntityList(node, items, emptyMessage, onClick, onDoubleClick) {
     button.type = "button";
     button.className = "list-item";
     if (item.id === state.selectedNationId && item.typeHint === "nation") button.classList.add("active");
+    if (item.id === state.selectedCompetitionId && item.typeHint === "competition") button.classList.add("active");
     button.innerHTML = item.markup;
     if (onClick) button.addEventListener("click", () => onClick(item));
     if (onDoubleClick) button.addEventListener("dblclick", () => onDoubleClick(item));
@@ -857,17 +863,31 @@ function renderMetadataLists() {
     typeHint: "nation",
     markup: `${itemContent(nation, nation.name, `${state.competitions.filter((item) => item.nation_id === nation.id).length} competitions`)}${actionButtons(nation, "nation")}`,
   }));
-  const competitions = (state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions).map((competition) => ({
+  const visibleCompetitions = state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions;
+  const competitions = visibleCompetitions.map((competition) => ({
     ...competition,
-    markup: `${itemContent(competition, competition.name, competition.type || "league")}${actionButtons(competition, "competition")}`,
+    typeHint: "competition",
+    markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(competition.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
   }));
-  const clubs = (state.selectedNationId ? state.clubs.filter((item) => item.nation_id === state.selectedNationId) : state.clubs).map((club) => ({
+  const visibleClubs = state.selectedCompetitionId
+    ? state.clubs.filter((item) => (item.competition_ids || []).includes(state.selectedCompetitionId))
+    : state.selectedNationId
+      ? state.clubs.filter((item) => item.nation_id === state.selectedNationId)
+      : state.clubs;
+  const clubs = visibleClubs.map((club) => ({
     ...club,
-    markup: `${itemContent(club, club.name, state.competitions.find((item) => item.id === club.competition_id)?.name || "Reusable club")}${actionButtons(club, "club")}`,
+    typeHint: "club",
+    markup: `${itemContent(club, club.name, (club.competition_ids || []).length ? `${(club.competition_ids || []).length} linked competitions` : "Reusable club")}${actionButtons(club, "club")}`,
   }));
 
   const selectNation = (nation) => {
     state.selectedNationId = nation.id;
+    state.selectedCompetitionId = state.competitions.find((item) => item.nation_id === nation.id)?.id || null;
+    renderMetadataLists();
+  };
+  const selectCompetition = (competition) => {
+    state.selectedNationId = competition.nation_id || state.selectedNationId;
+    state.selectedCompetitionId = competition.id;
     renderMetadataLists();
   };
   const editNation = (nation) => openEntityModal("nation", nation);
@@ -875,7 +895,10 @@ function renderMetadataLists() {
   const editClub = (club) => openEntityModal("club", club);
 
   [el.nationList, el.catalogNationList].forEach((node) => renderEntityList(node, nations, "Create a nation to start.", selectNation, editNation));
-  [el.competitionList, el.catalogCompetitionList].forEach((node) => renderEntityList(node, competitions, "No competitions yet.", null, editCompetition));
+  [el.competitionList, el.catalogCompetitionList].forEach((node) => renderEntityList(node, competitions.map((competition) => ({
+    ...competition,
+    markup: competition.markup,
+  })), "No competitions yet.", selectCompetition, editCompetition));
   [el.clubList, el.catalogClubList].forEach((node) => renderEntityList(node, clubs, "No clubs saved.", null, editClub));
 }
 
@@ -891,7 +914,9 @@ async function editItem(id, type) {
 
 async function deleteItem(id, type) {
   try {
-    await window.desktopApi.deleteFootballItem({ id, entity_type: type });
+    if (type === "nation") await window.desktopApi.deleteNation(id);
+    if (type === "competition") await window.desktopApi.deleteCompetition(id);
+    if (type === "club") await window.desktopApi.deleteClub(id);
     await refreshMetadata();
     showToast("Catalog item deleted.");
   } catch (error) {
@@ -940,9 +965,9 @@ function getCompetitionOptions() {
 }
 
 function getClubOptions() {
-  const nationId = el.approveNationSelect.value || state.nations[0]?.id || "";
   const competitionId = el.approveCompetitionSelect.value || "";
-  return state.clubs.filter((item) => item.nation_id === nationId && (!item.competition_id || item.competition_id === competitionId));
+  if (!competitionId) return [];
+  return state.clubs.filter((item) => (item.competition_ids || []).includes(competitionId));
 }
 
 function selectChannel(channel) {
@@ -1628,11 +1653,39 @@ function previewEntityLogo(url) {
   el.entityLogoPreview.innerHTML = url ? `<div class="asset-preview-content">${logoMarkup(url, "logo", true)}<div><strong>Saved logo</strong><div class="subtle">${html(url)}</div></div></div>` : "";
 }
 
+function renderCompetitionClubAssignments(selectedClubIds = []) {
+  if (!el.entityCompetitionClubAssignments) return;
+  const nationId = el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "";
+  const clubs = state.clubs.filter((item) => item.nation_id === nationId);
+  const selected = new Set((selectedClubIds || []).map((item) => String(item)));
+  if (!clubs.length) {
+    el.entityCompetitionClubAssignments.innerHTML = '<div class="empty-state">Create clubs for this nation first.</div>';
+    return;
+  }
+  el.entityCompetitionClubAssignments.innerHTML = clubs.map((club) => `
+    <label class="toggle">
+      <input type="checkbox" data-club-assignment value="${html(club.id)}" ${selected.has(String(club.id)) ? "checked" : ""}>
+      <span>${html(club.name)}</span>
+    </label>
+  `).join("");
+}
+
+function selectedCompetitionClubIds() {
+  if (!el.entityCompetitionClubAssignments) return [];
+  return [...el.entityCompetitionClubAssignments.querySelectorAll("input[data-club-assignment]:checked")]
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
 function populateEntitySelectors() {
   el.entityNationSelect.innerHTML = optionMarkup(state.nations, el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "");
   const nationId = el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "";
   const competitions = state.competitions.filter((item) => item.nation_id === nationId);
-  el.entityClubCompetitionSelect.innerHTML = optionMarkup(competitions, el.entityClubCompetitionSelect.value || "", true);
+  if (el.entityClubCompetitionSelect) el.entityClubCompetitionSelect.innerHTML = optionMarkup(competitions, el.entityClubCompetitionSelect.value || "", true);
+  if (el.entityTypeInput.value === "competition") {
+    const selectedClubIds = selectedCompetitionClubIds();
+    renderCompetitionClubAssignments(selectedClubIds);
+  }
 }
 
 function openEntityModal(type, item = null) {
@@ -1649,7 +1702,9 @@ function openEntityModal(type, item = null) {
   el.entityModalTitle.textContent = item ? `Edit ${item.name}` : `New ${type}`;
   el.entityNationField.classList.toggle("hidden", type === "nation");
   el.entityCompetitionTypeField.classList.toggle("hidden", type !== "competition");
-  el.entityClubCompetitionField.classList.toggle("hidden", type !== "club");
+  el.entityCompetitionParticipantField.classList.toggle("hidden", type !== "competition");
+  el.entityCompetitionClubAssignmentsField.classList.toggle("hidden", type !== "competition");
+  el.entityClubCompetitionField.classList.add("hidden");
   el.deleteEntityButton.disabled = !item?.id;
   el.deleteEntityButton.dataset.id = item?.id || "";
   el.deleteEntityButton.dataset.type = type;
@@ -1657,11 +1712,12 @@ function openEntityModal(type, item = null) {
   if (type === "competition") {
     el.entityNationSelect.value = item?.nation_id || state.selectedNationId || state.nations[0]?.id || "";
     el.entityCompetitionTypeSelect.value = item?.type || "league";
+    el.entityCompetitionParticipantSelect.value = item?.participant_type || "clubs";
+    el.entityCompetitionClubAssignmentsField.classList.toggle("hidden", el.entityCompetitionParticipantSelect.value === "nations");
+    renderCompetitionClubAssignments(item?.club_ids || []);
   }
   if (type === "club") {
     el.entityNationSelect.value = item?.nation_id || state.selectedNationId || state.nations[0]?.id || "";
-    populateEntitySelectors();
-    el.entityClubCompetitionSelect.value = item?.competition_id || "";
   }
   setModalVisibility(el.entityModal, true);
 }
@@ -1672,6 +1728,10 @@ async function refreshMetadata() {
   state.competitions = competitions.items || [];
   state.clubs = clubs.items || [];
   if (!state.selectedNationId && state.nations.length) state.selectedNationId = state.nations[0].id;
+  const visibleCompetitions = state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions;
+  if (!state.selectedCompetitionId || !visibleCompetitions.find((item) => item.id === state.selectedCompetitionId)) {
+    state.selectedCompetitionId = visibleCompetitions[0]?.id || null;
+  }
   hydrateSettings();
   renderMetadataLists();
   renderApprovalPanel();
@@ -2407,6 +2467,10 @@ el.publishUpdateForm?.addEventListener("submit", async (event) => {
 [el.newClubButton, el.catalogNewClubButton].forEach((button) => button.addEventListener("click", () => openEntityModal("club")));
 el.closeEntityModalButton.addEventListener("click", () => setModalVisibility(el.entityModal, false));
 el.entityNationSelect.addEventListener("change", populateEntitySelectors);
+el.entityCompetitionParticipantSelect?.addEventListener("change", () => {
+  const showClubAssignments = el.entityCompetitionParticipantSelect.value !== "nations";
+  el.entityCompetitionClubAssignmentsField.classList.toggle("hidden", !showClubAssignments);
+});
 
 el.entityForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -2417,8 +2481,16 @@ el.entityForm.addEventListener("submit", async (event) => {
   try {
     const logoUrl = (await uploadSelectedLogo(type, name)) || el.entityLogoPreview.dataset.logoUrl || "";
     if (type === "nation") await window.desktopApi.saveNation({ id: el.entityIdInput.value || null, name, logo_url: logoUrl });
-    if (type === "competition") await window.desktopApi.saveCompetition({ id: el.entityIdInput.value || null, name, nation_id: el.entityNationSelect.value, type: el.entityCompetitionTypeSelect.value, logo_url: logoUrl });
-    if (type === "club") await window.desktopApi.saveClub({ id: el.entityIdInput.value || null, name, nation_id: el.entityNationSelect.value, competition_id: el.entityClubCompetitionSelect.value || null, logo_url: logoUrl });
+    if (type === "competition") await window.desktopApi.saveCompetition({
+      id: el.entityIdInput.value || null,
+      name,
+      nation_id: el.entityNationSelect.value,
+      type: el.entityCompetitionTypeSelect.value,
+      participant_type: el.entityCompetitionParticipantSelect.value || "clubs",
+      club_ids: selectedCompetitionClubIds(),
+      logo_url: logoUrl,
+    });
+    if (type === "club") await window.desktopApi.saveClub({ id: el.entityIdInput.value || null, name, nation_id: el.entityNationSelect.value, logo_url: logoUrl });
     setModalVisibility(el.entityModal, false);
     await refreshMetadata();
     showToast("Metadata saved.");

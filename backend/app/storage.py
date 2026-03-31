@@ -605,8 +605,8 @@ def _default_admin_plans() -> List[Dict[str, object]]:
     ]
 
 
-def _tenant_default_metadata() -> Dict[str, List[Dict[str, str]]]:
-    return {"nations": [], "competitions": [], "clubs": []}
+def _tenant_default_metadata() -> Dict[str, List[Dict[str, object]]]:
+    return {"nations": [], "competitions": [], "clubs": [], "competition_club_links": []}
 
 
 def _tenant_default_provider_payload() -> List[Dict[str, object]]:
@@ -2384,13 +2384,13 @@ def save_mobile_app_record(
     return record
 
 
-def load_metadata(*, admin_id: Optional[str] = None, tenant_id: Optional[str] = None) -> Dict[str, List[Dict[str, str]]]:
+def load_metadata(*, admin_id: Optional[str] = None, tenant_id: Optional[str] = None) -> Dict[str, List[Dict[str, object]]]:
     resolved_admin_id = _resolve_admin_id(admin_id=admin_id, tenant_id=tenant_id)
     path = _tenant_file_path(resolved_admin_id, "football_metadata.json") if resolved_admin_id else METADATA_PATH
     payload = _read_json(path, _tenant_default_metadata())
     if not isinstance(payload, dict):
         return _tenant_default_metadata()
-    for key in ("nations", "competitions", "clubs"):
+    for key in ("nations", "competitions", "clubs", "competition_club_links"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
         normalized_items = []
@@ -2399,15 +2399,97 @@ def load_metadata(*, admin_id: Optional[str] = None, tenant_id: Optional[str] = 
                 continue
             current = dict(item)
             current["tenant_id"] = _normalize_tenant_id(current.get("tenant_id"))
+            if key == "competition_club_links":
+                current["competition_id"] = str(current.get("competition_id") or "").strip()
+                raw_club_ids = current.get("club_ids")
+                if not isinstance(raw_club_ids, list):
+                    raw_club_ids = []
+                current["club_ids"] = [str(club_id).strip() for club_id in raw_club_ids if str(club_id).strip()]
+            if key == "competitions":
+                current["participant_type"] = str(current.get("participant_type") or "clubs").strip().lower() or "clubs"
             normalized_items.append(current)
         payload[key] = normalized_items
+
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    link_index: Dict[str, Dict[str, object]] = {
+        str(item.get("competition_id") or ""): item
+        for item in payload["competition_club_links"]
+        if item.get("tenant_id") == normalized_tenant_id and str(item.get("competition_id") or "").strip()
+    }
+    migrated = False
+    for club in payload["clubs"]:
+        if club.get("tenant_id") != normalized_tenant_id:
+            continue
+        legacy_competition_id = str(club.get("competition_id") or "").strip()
+        if not legacy_competition_id:
+            continue
+        link = link_index.setdefault(
+            legacy_competition_id,
+            {
+                "competition_id": legacy_competition_id,
+                "club_ids": [],
+                "tenant_id": normalized_tenant_id,
+            },
+        )
+        if str(club.get("id") or "").strip() and str(club.get("id")) not in link["club_ids"]:
+            link["club_ids"].append(str(club.get("id")))
+            migrated = True
+        if club.get("competition_id"):
+            club["competition_id"] = ""
+            migrated = True
+    if migrated:
+        payload["competition_club_links"] = list(link_index.values()) + [
+            item for item in payload["competition_club_links"]
+            if item.get("tenant_id") != normalized_tenant_id
+        ]
     return payload
 
 
-def save_metadata(metadata: Dict[str, List[Dict[str, str]]], *, admin_id: Optional[str] = None, tenant_id: Optional[str] = None) -> None:
+def save_metadata(metadata: Dict[str, List[Dict[str, object]]], *, admin_id: Optional[str] = None, tenant_id: Optional[str] = None) -> None:
     resolved_admin_id = _resolve_admin_id(admin_id=admin_id, tenant_id=tenant_id)
     path = _tenant_file_path(resolved_admin_id, "football_metadata.json") if resolved_admin_id else METADATA_PATH
     _write_json(path, metadata)
+
+
+def _competition_club_ids(metadata: Dict[str, List[Dict[str, object]]], competition_id: str, *, tenant_id: Optional[str] = None) -> List[str]:
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    for item in metadata.get("competition_club_links", []):
+        if item.get("tenant_id") != normalized_tenant_id:
+            continue
+        if str(item.get("competition_id") or "") == str(competition_id or ""):
+            return [str(club_id) for club_id in item.get("club_ids", []) if str(club_id).strip()]
+    return []
+
+
+def _set_competition_club_ids(metadata: Dict[str, List[Dict[str, object]]], competition_id: str, club_ids: List[str], *, tenant_id: Optional[str] = None) -> None:
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    normalized_competition_id = str(competition_id or "").strip()
+    normalized_club_ids: List[str] = []
+    for club_id in club_ids:
+        normalized_club_id = str(club_id or "").strip()
+        if normalized_club_id and normalized_club_id not in normalized_club_ids:
+            normalized_club_ids.append(normalized_club_id)
+
+    next_links: List[Dict[str, object]] = []
+    replaced = False
+    for item in metadata.get("competition_club_links", []):
+        if item.get("tenant_id") == normalized_tenant_id and str(item.get("competition_id") or "") == normalized_competition_id:
+            if normalized_club_ids:
+                next_links.append({
+                    "competition_id": normalized_competition_id,
+                    "club_ids": normalized_club_ids,
+                    "tenant_id": normalized_tenant_id,
+                })
+            replaced = True
+            continue
+        next_links.append(item)
+    if not replaced and normalized_club_ids:
+        next_links.append({
+            "competition_id": normalized_competition_id,
+            "club_ids": normalized_club_ids,
+            "tenant_id": normalized_tenant_id,
+        })
+    metadata["competition_club_links"] = next_links
 
 
 def list_nations(tenant_id: Optional[str] = None) -> List[Dict[str, str]]:
@@ -2418,28 +2500,49 @@ def list_nations(tenant_id: Optional[str] = None) -> List[Dict[str, str]]:
     )
 
 
-def list_competitions(nation_id: Optional[str] = None, tenant_id: Optional[str] = None) -> List[Dict[str, str]]:
-    items = [item for item in load_metadata(tenant_id=tenant_id)["competitions"] if item.get("tenant_id") == _normalize_tenant_id(tenant_id)]
+def list_competitions(nation_id: Optional[str] = None, tenant_id: Optional[str] = None) -> List[Dict[str, object]]:
+    metadata = load_metadata(tenant_id=tenant_id)
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    items = [item for item in metadata["competitions"] if item.get("tenant_id") == normalized_tenant_id]
     if nation_id:
         items = [item for item in items if item.get("nation_id") == nation_id]
-    return sorted(items, key=lambda item: item.get("name", "").lower())
+    enriched = [
+        {
+            **item,
+            "club_ids": _competition_club_ids(metadata, str(item.get("id") or ""), tenant_id=normalized_tenant_id),
+        }
+        for item in items
+    ]
+    return sorted(enriched, key=lambda item: item.get("name", "").lower())
 
 
 def list_clubs(
     nation_id: Optional[str] = None,
     competition_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
-) -> List[Dict[str, str]]:
-    items = [item for item in load_metadata(tenant_id=tenant_id)["clubs"] if item.get("tenant_id") == _normalize_tenant_id(tenant_id)]
+) -> List[Dict[str, object]]:
+    metadata = load_metadata(tenant_id=tenant_id)
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    items = [item for item in metadata["clubs"] if item.get("tenant_id") == normalized_tenant_id]
     if nation_id:
         items = [item for item in items if item.get("nation_id") == nation_id]
     if competition_id:
-        items = [
-            item
+        allowed_club_ids = set(_competition_club_ids(metadata, competition_id, tenant_id=normalized_tenant_id))
+        items = [item for item in items if str(item.get("id") or "") in allowed_club_ids]
+    return sorted(
+        [
+            {
+                **item,
+                "competition_ids": [
+                    str(competition.get("id") or "")
+                    for competition in metadata["competitions"]
+                    if str(item.get("id") or "") in _competition_club_ids(metadata, str(competition.get("id") or ""), tenant_id=normalized_tenant_id)
+                ],
+            }
             for item in items
-            if item.get("competition_id") in (None, "", competition_id)
-        ]
-    return sorted(items, key=lambda item: item.get("name", "").lower())
+        ],
+        key=lambda item: item.get("name", "").lower(),
+    )
 
 
 def get_nation(nation_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, str]]:
@@ -2500,9 +2603,11 @@ def upsert_competition(
     nation_id: str,
     competition_type: str,
     logo_url: str = "",
+    club_ids: Optional[List[str]] = None,
+    participant_type: str = "clubs",
     competition_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
-) -> Dict[str, str]:
+) -> Dict[str, object]:
     normalized_name = _normalize_name(name)
     if not normalized_name:
         raise ValueError("Competition name is required.")
@@ -2514,7 +2619,10 @@ def upsert_competition(
     normalized_type = competition_type.strip().lower() or "league"
     if normalized_type not in {"league", "cup"}:
         raise ValueError("Competition type must be 'league' or 'cup'.")
-    return _upsert_entity(
+    normalized_participant_type = str(participant_type or "clubs").strip().lower() or "clubs"
+    if normalized_participant_type not in {"clubs", "nations"}:
+        raise ValueError("Competition participant type must be 'clubs' or 'nations'.")
+    payload = _upsert_entity(
         "competitions",
         {
             "id": competition_id or "",
@@ -2522,21 +2630,42 @@ def upsert_competition(
             "slug": _slugify(normalized_name),
             "nation_id": nation_id,
             "type": normalized_type,
+            "participant_type": normalized_participant_type,
             "logo_url": logo_url.strip(),
             "tenant_id": normalized_tenant_id,
         },
         tenant_id=tenant_id,
     )
+    metadata = load_metadata(tenant_id=tenant_id)
+    selected_club_ids = club_ids if club_ids is not None else _competition_club_ids(metadata, str(payload.get("id") or ""), tenant_id=normalized_tenant_id)
+    valid_club_ids = []
+    for selected_club_id in selected_club_ids:
+        club = get_club(str(selected_club_id), tenant_id=normalized_tenant_id)
+        if club is None:
+            continue
+        if str(club.get("nation_id") or "") != nation_id:
+            continue
+        valid_club_ids.append(str(club.get("id") or ""))
+    _set_competition_club_ids(
+        metadata,
+        str(payload.get("id") or ""),
+        valid_club_ids if normalized_participant_type == "clubs" else [],
+        tenant_id=normalized_tenant_id,
+    )
+    save_metadata(metadata, tenant_id=tenant_id)
+    return {
+        **payload,
+        "club_ids": valid_club_ids if normalized_participant_type == "clubs" else [],
+    }
 
 
 def upsert_club(
     name: str,
     nation_id: str,
-    competition_id: Optional[str] = None,
     logo_url: str = "",
     club_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
-) -> Dict[str, str]:
+) -> Dict[str, object]:
     normalized_name = _normalize_name(name)
     if not normalized_name:
         raise ValueError("Club name is required.")
@@ -2545,8 +2674,6 @@ def upsert_club(
     normalized_tenant_id = _normalize_tenant_id(tenant_id)
     if get_nation(nation_id, tenant_id=normalized_tenant_id) is None:
         raise ValueError("Nation not found.")
-    if competition_id and get_competition(competition_id, tenant_id=normalized_tenant_id) is None:
-        raise ValueError("Competition not found.")
     return _upsert_entity(
         "clubs",
         {
@@ -2554,7 +2681,6 @@ def upsert_club(
             "name": normalized_name,
             "slug": _slugify(normalized_name),
             "nation_id": nation_id,
-            "competition_id": competition_id or "",
             "logo_url": logo_url.strip(),
             "tenant_id": normalized_tenant_id,
         },
@@ -2565,11 +2691,11 @@ def upsert_club(
 def delete_nation(nation_id: str, tenant_id: Optional[str] = None) -> None:
     metadata = load_metadata(tenant_id=tenant_id)
     normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    if any(item.get("nation_id") == nation_id and item.get("tenant_id") == normalized_tenant_id for item in metadata["competitions"]):
+        raise ValueError("Delete competitions for this nation first.")
+    if any(item.get("nation_id") == nation_id and item.get("tenant_id") == normalized_tenant_id for item in metadata["clubs"]):
+        raise ValueError("Delete or move clubs for this nation first.")
     metadata["nations"] = [item for item in metadata["nations"] if not (item.get("id") == nation_id and item.get("tenant_id") == normalized_tenant_id)]
-    metadata["competitions"] = [
-        item for item in metadata["competitions"] if not (item.get("nation_id") == nation_id and item.get("tenant_id") == normalized_tenant_id)
-    ]
-    metadata["clubs"] = [item for item in metadata["clubs"] if not (item.get("nation_id") == nation_id and item.get("tenant_id") == normalized_tenant_id)]
     save_metadata(metadata, tenant_id=tenant_id)
 
 
@@ -2579,11 +2705,7 @@ def delete_competition(competition_id: str, tenant_id: Optional[str] = None) -> 
     metadata["competitions"] = [
         item for item in metadata["competitions"] if not (item.get("id") == competition_id and item.get("tenant_id") == normalized_tenant_id)
     ]
-    metadata["clubs"] = [
-        item
-        for item in metadata["clubs"]
-        if not (item.get("competition_id") in {competition_id} and item.get("tenant_id") == normalized_tenant_id)
-    ]
+    _set_competition_club_ids(metadata, competition_id, [], tenant_id=normalized_tenant_id)
     save_metadata(metadata, tenant_id=tenant_id)
 
 
@@ -2591,6 +2713,9 @@ def delete_club(club_id: str, tenant_id: Optional[str] = None) -> None:
     metadata = load_metadata(tenant_id=tenant_id)
     normalized_tenant_id = _normalize_tenant_id(tenant_id)
     metadata["clubs"] = [item for item in metadata["clubs"] if not (item.get("id") == club_id and item.get("tenant_id") == normalized_tenant_id)]
+    for competition in [item for item in metadata["competitions"] if item.get("tenant_id") == normalized_tenant_id]:
+        competition_club_ids = [item for item in _competition_club_ids(metadata, str(competition.get("id") or ""), tenant_id=normalized_tenant_id) if item != club_id]
+        _set_competition_club_ids(metadata, str(competition.get("id") or ""), competition_club_ids, tenant_id=normalized_tenant_id)
     save_metadata(metadata, tenant_id=tenant_id)
 
 
