@@ -451,6 +451,20 @@ function normalizeCompetitionClubLink(item = {}) {
   };
 }
 
+function getCompetitionClubLink(competitionId) {
+  const normalizedCompetitionId = String(competitionId || "").trim();
+  if (!normalizedCompetitionId) return null;
+  return state.competitionClubLinks.find((item) => item.competition_id === normalizedCompetitionId) || null;
+}
+
+function getVisibleClubsForCompetition(competitionId) {
+  const normalizedCompetitionId = String(competitionId || "").trim();
+  if (!normalizedCompetitionId) return [];
+  const link = getCompetitionClubLink(normalizedCompetitionId);
+  if (!link) return [];
+  return state.clubs.filter((club) => link.club_ids.includes(String(club.id || "")));
+}
+
 function applyCatalogState({ nations = [], competitions = [], competitionClubLinks = [], clubs = [] } = {}) {
   state.nations = asArray(nations).map(normalizeNationItem);
   state.competitions = asArray(competitions).map(normalizeCompetitionItem);
@@ -992,13 +1006,9 @@ function renderMetadataLists() {
   const competitions = visibleCompetitions.map((competition) => ({
     ...competition,
     typeHint: "competition",
-    markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(state.competitionClubLinks.find((item) => item.competition_id === competition.id)?.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
+    markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(getCompetitionClubLink(competition.id)?.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
   }));
-  const selectedCompetitionLink = state.competitionClubLinks.find((item) => item.competition_id === state.selectedCompetitionId) || null;
-  const selectedClubIds = new Set((selectedCompetitionLink?.club_ids || []).map((item) => String(item)));
-  const visibleClubs = selectedCompetitionLink
-    ? state.clubs.filter((item) => selectedClubIds.has(String(item.id || "")))
-    : [];
+  const visibleClubs = getVisibleClubsForCompetition(state.selectedCompetitionId);
   const clubs = visibleClubs.map((club) => ({
     ...club,
     typeHint: "club",
