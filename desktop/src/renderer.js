@@ -465,6 +465,25 @@ function getVisibleClubsForCompetition(competitionId) {
   return state.clubs.filter((club) => link.club_ids.includes(String(club.id || "")));
 }
 
+function getVisibleClubsForCatalog() {
+  if (state.selectedCompetitionId) {
+    return getVisibleClubsForCompetition(state.selectedCompetitionId);
+  }
+  if (state.selectedNationId) {
+    const visibleCompetitionIds = new Set(
+      state.competitions
+        .filter((competition) => competition.nation_id === state.selectedNationId)
+        .map((competition) => String(competition.id || "")),
+    );
+    return state.clubs.filter((club) => {
+      const clubNationId = String(club.nation_id || "");
+      if (clubNationId && clubNationId === state.selectedNationId) return true;
+      return (club.competition_ids || []).some((competitionId) => visibleCompetitionIds.has(String(competitionId || "")));
+    });
+  }
+  return state.clubs;
+}
+
 function applyCatalogState({ nations = [], competitions = [], competitionClubLinks = [], clubs = [] } = {}) {
   state.nations = asArray(nations).map(normalizeNationItem);
   state.competitions = asArray(competitions).map(normalizeCompetitionItem);
@@ -1008,7 +1027,7 @@ function renderMetadataLists() {
     typeHint: "competition",
     markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(getCompetitionClubLink(competition.id)?.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
   }));
-  const visibleClubs = getVisibleClubsForCompetition(state.selectedCompetitionId);
+  const visibleClubs = getVisibleClubsForCatalog();
   const clubs = visibleClubs.map((club) => ({
     ...club,
     typeHint: "club",
@@ -1034,7 +1053,11 @@ function renderMetadataLists() {
     ...competition,
     markup: competition.markup,
   })), "No competitions yet.", selectCompetition, editCompetition));
-  const clubEmptyMessage = selectedCompetition ? "No clubs linked to this competition." : "Select a competition to view linked clubs.";
+  const clubEmptyMessage = state.selectedCompetitionId
+    ? "No clubs linked to this competition."
+    : state.selectedNationId
+      ? "No clubs available for this nation yet."
+      : "Create a club to start building the catalog.";
   [el.clubList, el.catalogClubList].forEach((node) => renderEntityList(node, clubs, clubEmptyMessage, null, editClub));
 }
 
@@ -1104,7 +1127,7 @@ function getCompetitionOptions() {
 function getClubOptions() {
   const competitionId = el.approveCompetitionSelect.value || "";
   if (!competitionId) return [];
-  return state.clubs.filter((item) => (item.competition_ids || []).includes(competitionId));
+  return getVisibleClubsForCompetition(competitionId);
 }
 
 function selectChannel(channel) {
@@ -1792,17 +1815,17 @@ function previewEntityLogo(url) {
 
 function renderCompetitionClubAssignments(selectedClubIds = []) {
   if (!el.entityCompetitionClubAssignments) return;
-  const nationId = el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "";
-  const clubs = state.clubs.filter((item) => item.nation_id === nationId);
+  const nationNameById = new Map(state.nations.map((nation) => [String(nation.id || ""), String(nation.name || "")]));
+  const clubs = [...state.clubs].sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
   const selected = new Set((selectedClubIds || []).map((item) => String(item)));
   if (!clubs.length) {
-    el.entityCompetitionClubAssignments.innerHTML = '<div class="empty-state">Create clubs for this nation first.</div>';
+    el.entityCompetitionClubAssignments.innerHTML = '<div class="empty-state">Create clubs first, then link the reusable clubs to this competition.</div>';
     return;
   }
   el.entityCompetitionClubAssignments.innerHTML = clubs.map((club) => `
     <label class="toggle">
       <input type="checkbox" data-club-assignment value="${html(club.id)}" ${selected.has(String(club.id)) ? "checked" : ""}>
-      <span>${html(club.name)}</span>
+      <span>${html(club.name)}${club.nation_id ? ` <small class="subtle">(${html(nationNameById.get(String(club.nation_id || "")) || club.nation_id)})</small>` : ""}</span>
     </label>
   `).join("");
 }
@@ -1815,7 +1838,9 @@ function selectedCompetitionClubIds() {
 }
 
 function populateEntitySelectors() {
-  el.entityNationSelect.innerHTML = optionMarkup(state.nations, el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "");
+  const includeEmptyNation = el.entityTypeInput.value === "club";
+  const selectedNationValue = el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "";
+  el.entityNationSelect.innerHTML = optionMarkup(state.nations, selectedNationValue, includeEmptyNation);
   const nationId = el.entityNationSelect.value || state.selectedNationId || state.nations[0]?.id || "";
   const competitions = state.competitions.filter((item) => item.nation_id === nationId);
   if (el.entityClubCompetitionSelect) el.entityClubCompetitionSelect.innerHTML = optionMarkup(competitions, el.entityClubCompetitionSelect.value || "", true);
@@ -1837,7 +1862,9 @@ function openEntityModal(type, item = null) {
   previewEntityLogo(item?.logo_url || "");
   el.entityModalEyebrow.textContent = type === "nation" ? "Nation" : type === "competition" ? "Competition" : "Club";
   el.entityModalTitle.textContent = item ? `Edit ${item.name}` : `New ${type}`;
-  el.entityNationField.classList.toggle("hidden", type === "nation" || type === "club");
+  el.entityNationField.classList.toggle("hidden", type === "nation");
+  const entityNationLabel = el.entityNationField?.querySelector("label");
+  if (entityNationLabel) entityNationLabel.textContent = type === "club" ? "Nation (optional)" : "Nation";
   el.entityCompetitionTypeField.classList.toggle("hidden", type !== "competition");
   el.entityCompetitionParticipantField.classList.toggle("hidden", type !== "competition");
   el.entityCompetitionClubAssignmentsField.classList.toggle("hidden", type !== "competition");

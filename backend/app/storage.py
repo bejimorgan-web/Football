@@ -2672,8 +2672,6 @@ def upsert_competition(
         club = get_club(str(selected_club_id), tenant_id=normalized_tenant_id)
         if club is None:
             continue
-        if str(club.get("nation_id") or "") != nation_id:
-            continue
         valid_club_ids.append(str(club.get("id") or ""))
     _set_competition_club_ids(
         metadata,
