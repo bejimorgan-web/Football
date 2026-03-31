@@ -1,9 +1,71 @@
 const fs = require("fs/promises");
 const syncFs = require("fs");
 const path = require("path");
+const { safeStorage } = require("electron");
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+const ENCRYPTED_PREFIX = "enc:";
+
+function canUseSecureStorage() {
+  try {
+    return safeStorage.isEncryptionAvailable();
+  } catch (_) {
+    return false;
+  }
+}
+
+function encryptSecret(value) {
+  const normalized = String(value || "");
+  if (!normalized) {
+    return "";
+  }
+  if (!canUseSecureStorage()) {
+    return normalized;
+  }
+  try {
+    return `${ENCRYPTED_PREFIX}${safeStorage.encryptString(normalized).toString("base64")}`;
+  } catch (_) {
+    return normalized;
+  }
+}
+
+function decryptSecret(value) {
+  const normalized = String(value || "");
+  if (!normalized.startsWith(ENCRYPTED_PREFIX)) {
+    return normalized;
+  }
+  if (!canUseSecureStorage()) {
+    return "";
+  }
+  try {
+    const payload = Buffer.from(normalized.slice(ENCRYPTED_PREFIX.length), "base64");
+    return safeStorage.decryptString(payload);
+  } catch (_) {
+    return "";
+  }
+}
+
+function hydrateProvider(provider = {}) {
+  return {
+    ...provider,
+    xtreamServerUrl: decryptSecret(provider.xtreamServerUrl),
+    xtreamUsername: decryptSecret(provider.xtreamUsername),
+    xtreamPassword: decryptSecret(provider.xtreamPassword),
+    m3uPlaylistUrl: decryptSecret(provider.m3uPlaylistUrl),
+  };
+}
+
+function serializeProvider(provider = {}) {
+  return {
+    ...provider,
+    xtreamServerUrl: encryptSecret(provider.xtreamServerUrl),
+    xtreamUsername: encryptSecret(provider.xtreamUsername),
+    xtreamPassword: encryptSecret(provider.xtreamPassword),
+    m3uPlaylistUrl: encryptSecret(provider.m3uPlaylistUrl),
+  };
 }
 
 const DEFAULT_DESKTOP_BACKEND_URL = String(process.env.DESKTOP_API_URL || process.env.API_BASE_URL || "http://127.0.0.1:8000").trim().replace(/\/+$/, "");
@@ -105,6 +167,7 @@ class ProviderStore {
   async init() {
     await this.#ensureLoaded();
     this.state.settings = normalizeSettingsShape(this.state.settings || {});
+    this.state.providers = this.state.providers.map((item) => serializeProvider(hydrateProvider(item)));
     await this.#persist();
   }
 
@@ -138,7 +201,7 @@ class ProviderStore {
         }
         return String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" });
       })
-      .map((item) => ({ ...item }));
+      .map((item) => hydrateProvider(item));
   }
 
   async listAllProviders() {
@@ -146,7 +209,7 @@ class ProviderStore {
     return this.state.providers
       .slice()
       .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }))
-      .map((item) => ({ ...item }));
+      .map((item) => hydrateProvider(item));
   }
 
   async listActiveProviders(adminId = null) {
@@ -164,10 +227,12 @@ class ProviderStore {
     await this.#ensureLoaded();
     const normalizedProviderId = Number(providerId || 0);
     if (adminId == null) {
-      return this.state.providers.find((item) => item.id === normalizedProviderId) || null;
+      const provider = this.state.providers.find((item) => item.id === normalizedProviderId) || null;
+      return provider ? hydrateProvider(provider) : null;
     }
     const normalizedAdminId = String(adminId || "").trim();
-    return this.state.providers.find((item) => item.id === normalizedProviderId && item.ownerAdminId === normalizedAdminId) || null;
+    const provider = this.state.providers.find((item) => item.id === normalizedProviderId && item.ownerAdminId === normalizedAdminId) || null;
+    return provider ? hydrateProvider(provider) : null;
   }
 
   async saveProvider(provider, adminId) {
@@ -222,23 +287,23 @@ class ProviderStore {
       }
       this.state.providers[index] = {
         ...this.state.providers[index],
-        ...normalizedProvider,
+        ...serializeProvider(normalizedProvider),
         updatedAt: timestamp,
       };
       await this.#persist();
-      return { ...this.state.providers[index] };
+      return hydrateProvider(this.state.providers[index]);
     }
 
     const nextId = this.state.providers.reduce((maxId, item) => Math.max(maxId, Number(item.id || 0)), 0) + 1;
     const created = {
-      ...normalizedProvider,
+      ...serializeProvider(normalizedProvider),
       id: nextId,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.state.providers.push(created);
     await this.#persist();
-    return { ...created };
+    return hydrateProvider(created);
   }
 
   async deleteProvider(providerId, adminId) {
@@ -304,7 +369,7 @@ class ProviderStore {
       const raw = await fs.readFile(this.storagePath, "utf8");
       const parsed = JSON.parse(raw);
       this.state = {
-        providers: Array.isArray(parsed?.providers) ? parsed.providers.map((item) => ({ ...item })) : [],
+        providers: Array.isArray(parsed?.providers) ? parsed.providers.map((item) => serializeProvider(hydrateProvider(item))) : [],
         settings: parsed?.settings && typeof parsed.settings === "object" ? { ...parsed.settings } : {},
       };
     } catch (_) {
