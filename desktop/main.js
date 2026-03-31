@@ -450,41 +450,21 @@ function sendMenuAction(payload) {
 }
 
 function setDashboardMenu() {
-  const isMaster = String(session?.role || "").toLowerCase() === "master";
   const template = [
     {
       label: "File",
       submenu: [
-        { label: "Logout", click: () => sendMenuAction({ action: "logout" }) },
-        { type: "separator" },
+        { role: "reload", label: "Reload" },
         { role: "quit", label: "Exit" },
-      ],
-    },
-    {
-      label: "Tools",
-      submenu: [
-        { label: "Backup", click: () => sendMenuAction({ section: "backups", action: "backup-now" }) },
-        { label: "Security Center", click: () => sendMenuAction({ section: "security", action: "security-center" }) },
-        { label: "System Information", click: () => sendMenuAction({ section: "branding", panel: "server", action: "system-information" }) },
       ],
     },
     {
       label: "Help",
       submenu: [
-        { label: "Check for Updates", click: () => sendMenuAction({ section: "branding", panel: "server", action: "check-for-updates" }) },
+        { label: "Documentation", click: () => shell.openPath(path.join(__dirname, "README.md")) },
       ],
     },
   ];
-
-  if (isMaster) {
-    template.splice(2, 0, {
-      label: "View",
-      submenu: [
-        { label: "Users", click: () => sendMenuAction({ section: "users", action: "users" }) },
-        { label: "Platform Clients Dashboard", click: () => openPlatformClientsDashboardWindow() },
-      ],
-    });
-  }
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -621,14 +601,10 @@ async function syncActiveProviderToBackend() {
   return { payload };
 }
 
-function buildBootstrapPayload(providers = [], activeProvider = null, settings = null) {
+function buildBootstrapPayload(settings = null) {
   return {
-    providers,
-    activeProvider,
     settings,
     session,
-    updateState,
-    masterLiveState,
   };
 }
 
@@ -952,60 +928,12 @@ function setupIpcHandlers() {
 
   ipcMain.handle("app:get-bootstrap", async () => {
     await ensureSingleUserSession({ persist: true });
-    await providerStore.migrateLegacyProviders(session.adminId);
     const settings = await providerStore.getSettings();
-    const providers = session?.adminId ? await providerStore.listProviders(session.adminId) : [];
-    const activeProvider = session?.adminId ? await providerStore.getActiveProvider(session.adminId) : null;
-    return buildBootstrapPayload(providers, activeProvider, settings);
-  });
-
-  ipcMain.handle("app:open-white-label-dashboard", async () => {
-    openPlatformClientsDashboardWindow();
-    return { ok: true };
-  });
-
-  ipcMain.handle("app:open-platform-clients-dashboard", async () => {
-    openPlatformClientsDashboardWindow();
-    return { ok: true };
-  });
-
-  ipcMain.handle("app:check-updates", async () => updateState);
-  ipcMain.handle("app:get-update-state", async () => updateState);
-  ipcMain.handle("app:get-master-live-state", async () => masterLiveState);
-  ipcMain.handle("app:download-update", async () => ({ ok: false }));
-  ipcMain.handle("app:install-update", async () => ({ ok: false }));
-
-  ipcMain.handle("providers:save", async (_, payload) => {
-    const provider = await providerStore.saveProvider(payload, session.adminId);
-    await syncActiveProviderToBackend();
-    return {
-      provider,
-      providers: await providerStore.listProviders(session.adminId),
-      activeProvider: await providerStore.getActiveProvider(session.adminId),
-    };
-  });
-
-  ipcMain.handle("providers:delete", async (_, providerId) => {
-    await providerStore.deleteProvider(providerId, session.adminId);
-    await syncActiveProviderToBackend();
-    return {
-      providers: await providerStore.listProviders(session.adminId),
-      activeProvider: await providerStore.getActiveProvider(session.adminId),
-    };
-  });
-
-  ipcMain.handle("providers:activate", async (_, providerId) => {
-    await providerStore.setActiveProvider(providerId, session.adminId);
-    await syncActiveProviderToBackend();
-    return {
-      providers: await providerStore.listProviders(session.adminId),
-      activeProvider: await providerStore.getActiveProvider(session.adminId),
-    };
+    return buildBootstrapPayload(settings);
   });
 
   ipcMain.handle("settings:save", async (_, payload) => {
     await providerStore.saveSettings(payload || {});
-    await syncActiveProviderToBackend();
     return providerStore.getSettings();
   });
 
@@ -1018,279 +946,9 @@ function setupIpcHandlers() {
     });
   });
 
-  ipcMain.handle("settings:api-connect", async (_, payload) => {
-    requireMasterSession("manage platform API endpoints");
-    const kind = payload?.kind === "public" ? "public" : "backend";
-    const settings = await getSettings();
-    const draftPatch = buildApiSettingsPatch(settings, kind, {
-      url: payload?.url || "",
-      apiToken: payload?.apiToken || "",
-      connected: false,
-    });
-    await providerStore.saveSettings(draftPatch);
-    await callBackend("/api/config", {
-      method: "POST",
-      body: {
-        backendApi: draftPatch.backendApi,
-        publicApi: draftPatch.publicApi,
-        apiBaseUrl: draftPatch.publicApi.url,
-      },
-    }).catch(() => null);
-    let tested;
-    try {
-      tested = await testApiEndpointConnection(kind, {
-        url: payload?.url || "",
-        apiToken: payload?.apiToken || "",
-      });
-    } catch (error) {
-      return {
-        settings: await providerStore.getSettings(),
-        error: error.message,
-      };
-    }
-    const patch = buildApiSettingsPatch(await getSettings(), kind, tested.endpoint);
-    await providerStore.saveSettings(patch);
-    writeDesktopLog(`${kind} API connected: url=${kind === "public" ? patch.publicApi.url : patch.backendApi.url} tenant=master`);
-    await callBackend("/api/config", {
-      method: "POST",
-      body: {
-        backendApi: patch.backendApi,
-        publicApi: patch.publicApi,
-        apiBaseUrl: patch.publicApi.url,
-      },
-    }).catch(() => null);
-    await syncActiveProviderToBackend();
-    return {
-      settings: await providerStore.getSettings(),
-      test: tested,
-    };
-  });
-
-  ipcMain.handle("settings:api-disconnect", async (_, payload) => {
-    requireMasterSession("manage platform API endpoints");
-    const kind = payload?.kind === "public" ? "public" : "backend";
-    const settings = await getSettings();
-    const current = getApiEndpointConfig(settings, kind);
-    const patch = buildApiSettingsPatch(settings, kind, {
-      ...current,
-      connected: false,
-    });
-    await providerStore.saveSettings(patch);
-    writeDesktopLog(`${kind} API disconnected: url=${kind === "public" ? patch.publicApi.url : patch.backendApi.url} tenant=master`);
-    await callBackend("/api/config", {
-      method: "POST",
-      body: {
-        backendApi: patch.backendApi,
-        publicApi: patch.publicApi,
-        apiBaseUrl: patch.publicApi.url,
-      },
-    }).catch(() => null);
-    await syncActiveProviderToBackend();
-    return {
-      settings: await providerStore.getSettings(),
-    };
-  });
-
-  ipcMain.handle("backend:runtime-status", async () => {
+  ipcMain.handle("backend:fetch-streams", async () => {
     const settings = await providerStore.getSettings();
-    const remote = await callBackend(withTenant("/admin/status", settings), { auth: true }).catch(() => null);
-    return {
-      ...defaultRuntimeStatus(settings),
-      reachable: Boolean(remote),
-      running: Boolean(remote),
-      remote,
-    };
-  });
-
-  ipcMain.handle("backup:status", async () => defaultBackupStatus());
-  ipcMain.handle("backup:run", async () => runDesktopBackupNow());
-  ipcMain.handle("backup:restore", async (_, archivePath) => restoreDesktopBackup(archivePath));
-
-  ipcMain.handle("backend:sync-active-provider", async () => syncActiveProviderToBackend());
-
-  ipcMain.handle("backend:active-providers", async () => {
-    const settings = await providerStore.getSettings();
-    return callBackend(withTenant("/admin/streams", settings), { auth: true });
-  });
-
-  const tenantPost = (name, route) => {
-    ipcMain.handle(name, async (_, payload) => {
-      return callBackend(route, {
-        method: "POST",
-        body: payload || {},
-      });
-    });
-  };
-
-  const backendPost = (name, routeBuilder) => {
-    ipcMain.handle(name, async (_, payload) => {
-      const settings = await providerStore.getSettings();
-      const route = typeof routeBuilder === "function" ? routeBuilder(payload, settings) : routeBuilder;
-      return callBackend(withTenant(route, settings), {
-        method: "POST",
-        body: payload || {},
-      });
-    });
-  };
-
-  const backendGet = (name, routeBuilder) => {
-    ipcMain.handle(name, async (_, payload) => {
-      const settings = await providerStore.getSettings();
-      const route = typeof routeBuilder === "function" ? routeBuilder(payload, settings) : routeBuilder;
-      return callBackend(withTenant(route, settings));
-    });
-  };
-
-  const backendDelete = (name, routeBuilder) => {
-    ipcMain.handle(name, async (_, payload) => {
-      const settings = await providerStore.getSettings();
-      const route = typeof routeBuilder === "function" ? routeBuilder(payload, settings) : routeBuilder;
-      return callBackend(withTenant(route, settings), {
-        method: "DELETE",
-      });
-    });
-  };
-
-  tenantPost("backend:tenant-login", "/tenant/login");
-  backendGet("backend:tenant-profile", "/tenant/profile");
-  backendGet("backend:tenant-list", "/admin/tenants");
-  backendPost("backend:tenant-save", "/admin/tenants");
-  backendGet("backend:branding-get", "/admin/branding");
-  backendPost("backend:branding-save", "/admin/branding");
-  backendGet("backend:setup-status", "/admin/setup-status");
-  backendPost("backend:setup-complete", "/admin/setup-complete");
-  ipcMain.handle("backend:validate-device", async () => {
-    const settings = await providerStore.getSettings();
-    return callBackend(withTenant("/admin/validate-device", settings), {
-      method: "POST",
-      body: {
-        api_token: session.apiToken,
-        device_id: session.deviceId,
-        server_id: session.serverId,
-      },
-    });
-  });
-  ipcMain.handle("backend:fetch-streams", async (_, providerId) => {
-    const settings = await providerStore.getSettings();
-    const providerQuery = providerId ? `?provider_id=${encodeURIComponent(providerId)}` : "";
-    const payload = await callBackend(withTenant(`/admin/streams${providerQuery}`, settings));
-    const providerGroups = await callBackend(withTenant(`/provider/groups${providerQuery}`, settings)).catch(() => ({ items: [] }));
-    return { ...payload, groups: providerGroups.items || payload.groups || [] };
-  });
-  backendGet("backend:fetch-approved", "/admin/streams/approved");
-  backendGet("backend:fetch-users", "/admin/users");
-  backendGet("backend:fetch-online-users", "/admin/users/online");
-  backendGet("backend:analytics-live", "/analytics/live");
-  backendGet("backend:analytics-streams", "/analytics/streams");
-  backendGet("backend:analytics-top-matches", "/analytics/top-matches");
-  backendGet("backend:analytics-top-competitions", "/analytics/top-competitions");
-  backendGet("backend:analytics-daily-viewers", "/analytics/daily-viewers");
-  backendGet("backend:analytics-countries", "/analytics/countries");
-  backendGet("backend:white-label-installs", "/admin/platform_clients/dashboard");
-  backendGet("backend:white-label-subscriptions", "/admin/platform_clients/analytics");
-  backendPost("backend:mobile-build", "/mobile/generate-app");
-  backendGet("backend:mobile-build-preflight", "/mobile/preflight");
-  ipcMain.handle("backend:mobile-build-cancel", async (_, buildId) => callBackend(`/mobile/build/cancel/${encodeURIComponent(buildId || "")}`, { method: "POST" }));
-  ipcMain.handle("backend:mobile-build-status", async (_, buildId) => callBackend(`/mobile/build/status/${encodeURIComponent(buildId || "")}`));
-  ipcMain.handle("backend:mobile-build-history", async () => callBackend("/mobile/build/history"));
-  ipcMain.handle("backend:mobile-build-download", async (_, payload) => {
-    const response = await callBackend(`/mobile/download/${encodeURIComponent(payload?.buildId || "")}`, {
-      raw: true,
-    });
-    const target = path.join(app.getPath("downloads"), String(payload?.fileName || "mobile-build.apk"));
-    fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
-    return { path: target };
-  });
-  backendGet("backend:apk-versions", "/admin/apk-versions");
-  ipcMain.handle("backend:upload-apk", async (_, payload) => callBackend("/admin/upload-apk", { method: "POST", body: payload || {} }));
-  ipcMain.handle("backend:set-latest-apk", async (_, payload) => callBackend(`/admin/apk-versions/${encodeURIComponent(payload?.id || "")}/set-latest`, { method: "POST", body: { force_update: Boolean(payload?.force_update) } }));
-  ipcMain.handle("backend:updates-latest", async () => {
-    try {
-      return await callBackend(`/updates/latest?current_version=${encodeURIComponent(app.getVersion())}&platform=win32`, { auth: false });
-    } catch (error) {
-      writeDesktopLog("Latest update metadata fetch failed.", error);
-      return {};
-    }
-  });
-  ipcMain.handle("backend:updates-history", async () => {
-    try {
-      return await callBackend("/updates/history");
-    } catch (error) {
-      writeDesktopLog("Update history fetch failed.", error);
-      return [];
-    }
-  });
-  ipcMain.handle("backend:updates-publish", async (_, payload) => callBackend("/updates/publish", { method: "POST", body: payload || {} }));
-  backendGet("backend:platform-clients", "/admin/platform_clients");
-  ipcMain.handle("backend:platform-client-block", async (_, adminId) => callBackend(`/admin/platform_clients/${encodeURIComponent(adminId || "")}/block`, { method: "POST" }));
-  ipcMain.handle("backend:platform-client-unblock", async (_, adminId) => callBackend(`/admin/platform_clients/${encodeURIComponent(adminId || "")}/unblock`, { method: "POST" }));
-  ipcMain.handle("backend:platform-client-extend-trial", async (_, payload) => callBackend(`/admin/platform_clients/${encodeURIComponent(payload?.adminId || "")}/extend_trial`, { method: "POST", body: { days: Number(payload?.days || 0) } }));
-  ipcMain.handle("backend:platform-client-reset-server", async (_, adminId) => callBackend(`/admin/platform_clients/${encodeURIComponent(adminId || "")}/reset_server`, { method: "POST" }));
-  ipcMain.handle("backend:platform-client-delete", async (_, adminId) => callBackend(`/admin/platform_clients/${encodeURIComponent(adminId || "")}`, { method: "DELETE" }));
-  ipcMain.handle("backend:branding-upload", async (_, payload) => callBackend(withTenant(`/admin/branding/upload_${payload?.kind || "logo"}`, await providerStore.getSettings()), { method: "POST", body: { data_url: payload?.dataUrl || "" } }));
-  backendGet("backend:security-dashboard", "/admin/security");
-  backendPost("backend:block-user", "/admin/block");
-  backendPost("backend:unblock-user", "/admin/unblock");
-  backendPost("backend:free-user", "/admin/users/free-access");
-  backendPost("backend:remove-free-user", "/admin/users/remove-free-access");
-  backendPost("backend:extend-user", "/admin/extend");
-  backendPost("backend:extend-subscription", "/admin/extend");
-  backendPost("backend:rename-user", "/admin/users/rename");
-  backendPost("backend:restore-user-name", "/admin/users/restore-name");
-  backendPost("backend:reset-device", "/admin/users/reset-device");
-  backendPost("backend:set-vpn-policy", "/admin/users/set-vpn-policy");
-  ipcMain.handle("backend:update-football-item", async (_, payload) => {
-    const settings = await providerStore.getSettings();
-    const itemId = encodeURIComponent(payload?.id || "");
-    return callBackend(withTenant(`/football/${itemId}`, settings), {
-      method: "PUT",
-      body: {
-        entity_type: payload?.entity_type || "",
-        name: payload?.name || "",
-        nation_id: payload?.nation_id || null,
-        competition_id: payload?.competition_id || null,
-        competition_type: payload?.competition_type || "league",
-        logo_url: payload?.logo_url || "",
-      },
-    });
-  });
-  ipcMain.handle("backend:delete-football-item", async (_, payload) => {
-    const settings = await providerStore.getSettings();
-    const itemId = encodeURIComponent(payload?.id || "");
-    const entityType = encodeURIComponent(payload?.entity_type || "");
-    return callBackend(withTenant(`/football/${itemId}?entity_type=${entityType}`, settings), {
-      method: "DELETE",
-    });
-  });
-  backendGet("backend:fetch-nations", "/admin/nations");
-  backendPost("backend:save-nation", "/admin/nations");
-  backendDelete("backend:delete-nation", (nationId) => `/admin/nations/${encodeURIComponent(nationId || "")}`);
-  ipcMain.handle("backend:fetch-competitions", async (_, nationId = null) => {
-    const settings = await providerStore.getSettings();
-    const suffix = nationId ? `?nation_id=${encodeURIComponent(nationId)}` : "";
-    return callBackend(withTenant(`/admin/competitions${suffix}`, settings));
-  });
-  backendPost("backend:save-competition", "/admin/competitions");
-  backendDelete("backend:delete-competition", (competitionId) => `/admin/competitions/${encodeURIComponent(competitionId || "")}`);
-  ipcMain.handle("backend:fetch-clubs", async (_, payload = {}) => {
-    const settings = await providerStore.getSettings();
-    const params = new URLSearchParams();
-    if (payload.nationId) params.set("nation_id", payload.nationId);
-    if (payload.competitionId) params.set("competition_id", payload.competitionId);
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    return callBackend(withTenant(`/admin/clubs${suffix}`, settings));
-  });
-  backendPost("backend:save-club", "/admin/clubs");
-  backendDelete("backend:delete-club", (clubId) => `/admin/clubs/${encodeURIComponent(clubId || "")}`);
-  ipcMain.handle("backend:upload-asset", async (_, payload) => {
-    return { url: payload?.data_url || payload?.dataUrl || "" };
-  });
-  backendPost("backend:approve-stream", "/admin/streams/approve");
-  ipcMain.handle("backend:remove-approved", async (_, streamId) => {
-    const settings = await providerStore.getSettings();
-    return callBackend(withTenant(`/admin/streams/remove?stream_id=${encodeURIComponent(streamId || "")}`, settings), {
-      method: "POST",
-    });
+    return callBackend(withTenant("/streams?page=1&page_size=500&include_url=true", settings));
   });
 }
 

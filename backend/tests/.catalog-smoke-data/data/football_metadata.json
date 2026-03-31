@@ -1,0 +1,33 @@
+{
+  "nations": [
+    {
+      "id": "fr",
+      "name": "France",
+      "slug": "france",
+      "logo_url": "https://cdn.example.test/flags/fr.png",
+      "tenant_id": "default"
+    }
+  ],
+  "competitions": [
+    {
+      "id": "ligue-1",
+      "name": "Ligue 1",
+      "slug": "ligue-1",
+      "nation_id": "fr",
+      "type": "league",
+      "logo_url": "https://cdn.example.test/competitions/ligue1.png",
+      "tenant_id": "default"
+    }
+  ],
+  "clubs": [
+    {
+      "id": "psg",
+      "name": "Paris Saint-Germain",
+      "slug": "paris-saint-germain",
+      "nation_id": "fr",
+      "competition_id": "ligue-1",
+      "logo_url": "https://cdn.example.test/clubs/psg.png",
+      "tenant_id": "default"
+    }
+  ]
+}

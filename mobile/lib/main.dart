@@ -519,14 +519,14 @@ class CompetitionCatalog {
     required this.name,
     required this.type,
     required this.logo,
-    required this.matches,
+    required this.clubs,
   });
 
   final String id;
   final String name;
   final String type;
   final String logo;
-  final List<MatchItem> matches;
+  final List<ClubCatalog> clubs;
 
   factory CompetitionCatalog.fromJson(Map<String, dynamic> json) {
     return CompetitionCatalog(
@@ -534,7 +534,36 @@ class CompetitionCatalog {
       name: '${json['name'] ?? 'Competition'}',
       type: '${json['type'] ?? 'league'}',
       logo: '${json['logo'] ?? json['logo_url'] ?? ''}',
-      matches: (json['matches'] as List<dynamic>? ?? <dynamic>[])
+      clubs: (json['clubs'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(ClubCatalog.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class ClubCatalog {
+  const ClubCatalog({
+    required this.id,
+    required this.name,
+    required this.logo,
+    required this.competitionId,
+    required this.streams,
+  });
+
+  final String id;
+  final String name;
+  final String logo;
+  final String competitionId;
+  final List<MatchItem> streams;
+
+  factory ClubCatalog.fromJson(Map<String, dynamic> json) {
+    return ClubCatalog(
+      id: '${json['id'] ?? ''}',
+      name: '${json['name'] ?? 'Club'}',
+      logo: '${json['logo'] ?? json['logo_url'] ?? ''}',
+      competitionId: '${json['competition_id'] ?? ''}',
+      streams: (json['streams'] as List<dynamic>? ?? <dynamic>[])
           .whereType<Map<String, dynamic>>()
           .map(MatchItem.fromJson)
           .toList(),
@@ -1290,7 +1319,7 @@ class CompetitionListPage extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => MatchListPage(
+                    builder: (_) => ClubListPage(
                       session: session,
                       nation: nation,
                       competition: competition,
@@ -1307,8 +1336,8 @@ class CompetitionListPage extends StatelessWidget {
   }
 }
 
-class MatchListPage extends StatelessWidget {
-  const MatchListPage({
+class ClubListPage extends StatelessWidget {
+  const ClubListPage({
     super.key,
     required this.session,
     required this.nation,
@@ -1329,7 +1358,7 @@ class MatchListPage extends StatelessWidget {
           _SectionIntroCard(
             eyebrow: nation.name,
             title: competition.name,
-            subtitle: '${competition.matches.length} match${competition.matches.length == 1 ? '' : 'es'} available',
+            subtitle: '${competition.clubs.length} club${competition.clubs.length == 1 ? '' : 's'} available',
             leading: _NetworkLogo(
               url: competition.logo,
               backendUrl: session.backendUrl,
@@ -1338,7 +1367,62 @@ class MatchListPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          for (final match in competition.matches) ...[
+          for (final club in competition.clubs) ...[
+            _ClubCard(
+              backendUrl: session.backendUrl,
+              club: club,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => StreamListPage(
+                      session: session,
+                      competition: competition,
+                      club: club,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class StreamListPage extends StatelessWidget {
+  const StreamListPage({
+    super.key,
+    required this.session,
+    required this.competition,
+    required this.club,
+  });
+
+  final AppSession session;
+  final CompetitionCatalog competition;
+  final ClubCatalog club;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(club.name)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        children: [
+          _SectionIntroCard(
+            eyebrow: competition.name,
+            title: club.name,
+            subtitle: '${club.streams.length} stream${club.streams.length == 1 ? '' : 's'} available',
+            leading: _NetworkLogo(
+              url: club.logo,
+              backendUrl: session.backendUrl,
+              size: 54,
+              fallbackIcon: Icons.shield_outlined,
+            ),
+          ),
+          const SizedBox(height: 18),
+          for (final match in club.streams) ...[
             _MatchCard(
               backendUrl: session.backendUrl,
               match: match,
@@ -1459,7 +1543,7 @@ class _FootballUpdatesPanel extends StatelessWidget {
             const Text('Live Scores', style: TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             for (final item in liveScores.take(3)) ...[
-              _RuntimeTile(title: '${item.homeTeam} vs ${item.awayTeam}', subtitle: '${item.score}  •  ${item.status}'),
+              _RuntimeTile(title: '${item.homeTeam} vs ${item.awayTeam}', subtitle: '${item.score}  |  ${item.status}'),
               const SizedBox(height: 8),
             ],
             const SizedBox(height: 10),
@@ -1477,7 +1561,7 @@ class _FootballUpdatesPanel extends StatelessWidget {
             const Text('Standings Snapshot', style: TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             for (final item in standings.take(5)) ...[
-              _RuntimeTile(title: '${item.position}. ${item.team}', subtitle: 'P ${item.played}  •  ${item.points} pts'),
+              _RuntimeTile(title: '${item.position}. ${item.team}', subtitle: 'P ${item.played}  |  ${item.points} pts'),
               const SizedBox(height: 8),
             ],
           ],
@@ -1623,7 +1707,7 @@ class _CountryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final matchCount = nation.competitions.fold<int>(0, (sum, item) => sum + item.matches.length);
+    final streamCount = nation.competitions.fold<int>(0, (sum, item) => sum + item.clubs.fold<int>(0, (clubSum, club) => clubSum + club.streams.length));
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(28),
@@ -1657,7 +1741,7 @@ class _CountryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${nation.competitions.length} competition${nation.competitions.length == 1 ? '' : 's'}  •  $matchCount match${matchCount == 1 ? '' : 'es'}',
+                    '${nation.competitions.length} competition${nation.competitions.length == 1 ? '' : 's'}  |  $streamCount stream${streamCount == 1 ? '' : 's'}',
                     style: const TextStyle(color: Color(0xFFB7D0DF)),
                   ),
                 ],
@@ -1693,6 +1777,7 @@ class _CompetitionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final streamCount = competition.clubs.fold<int>(0, (sum, item) => sum + item.streams.length);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(28),
@@ -1722,7 +1807,64 @@ class _CompetitionCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${competition.type == 'cup' ? 'Cup' : 'League'}  •  ${competition.matches.length} match${competition.matches.length == 1 ? '' : 'es'}',
+                    '${competition.type == 'cup' ? 'Cup' : 'League'}  |  ${competition.clubs.length} club${competition.clubs.length == 1 ? '' : 's'}  |  $streamCount stream${streamCount == 1 ? '' : 's'}',
+                    style: const TextStyle(color: Color(0xFF95AFC3)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Icon(Icons.chevron_right, color: Color(0xFF95AFC3)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ClubCard extends StatelessWidget {
+  const _ClubCard({
+    required this.backendUrl,
+    required this.club,
+    required this.onTap,
+  });
+
+  final String backendUrl;
+  final ClubCatalog club;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(28),
+      child: Ink(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1A25),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withOpacity(0.06)),
+        ),
+        child: Row(
+          children: [
+            _NetworkLogo(
+              url: club.logo,
+              backendUrl: backendUrl,
+              size: 50,
+              fallbackIcon: Icons.shield_outlined,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    club.name,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${club.streams.length} stream${club.streams.length == 1 ? '' : 's'}',
                     style: const TextStyle(color: Color(0xFF95AFC3)),
                   ),
                 ],
@@ -1750,6 +1892,7 @@ class _CompetitionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final matches = competition.clubs.expand((club) => club.streams).toList(growable: false);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1787,7 +1930,7 @@ class _CompetitionSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          for (final match in competition.matches) ...[
+          for (final match in matches) ...[
             _MatchCard(
               backendUrl: backendUrl,
               match: match,
@@ -2229,7 +2372,15 @@ class _PlayerPageState extends State<PlayerPage> {
               name: widget.competition.name,
               type: widget.competition.type,
               logo: widget.competition.logo,
-              matches: [widget.match],
+              clubs: [
+                ClubCatalog(
+                  id: widget.match.homeTeamName,
+                  name: widget.match.homeTeamName,
+                  logo: widget.match.homeTeamLogo,
+                  competitionId: widget.competition.id,
+                  streams: [widget.match],
+                ),
+              ],
             ),
             onOpenMatch: (_) {},
           ),

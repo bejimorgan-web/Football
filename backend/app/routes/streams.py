@@ -35,6 +35,9 @@ class StreamCompatPayload(BaseModel):
     away_club_name: str = ""
     away_club_logo: str = ""
     stream_url: str = ""
+    nation_id: str = ""
+    competition_id: str = ""
+    club_ids: list[str] = []
     tenant_id: str = SINGLE_TENANT_ID
 
 
@@ -137,6 +140,9 @@ def add_stream(payload: StreamCompatPayload):
         "away_club_logo": str(payload.away_club_logo).strip(),
         "stream_url": str(payload.stream_url).strip(),
         "last_known_url": str(payload.stream_url).strip(),
+        "nation_id": str(payload.nation_id).strip(),
+        "competition_id": str(payload.competition_id).strip(),
+        "club_ids": [str(item).strip() for item in payload.club_ids if str(item).strip()],
     }
     streams = [
         item
@@ -202,30 +208,31 @@ def streams_by_league(request: Request, include_url: bool = False, tenant_id: st
     result: Dict[str, List[Dict]] = {}
     for nation in catalog:
         for competition in nation["competitions"]:
-            result[competition["name"]] = competition["matches"] if include_url else [
+            matches = []
+            for club in competition.get("clubs", []):
+                matches.extend(club.get("streams", []))
+            result[competition["name"]] = matches if include_url else [
                 {
                     "stream_id": match["stream_id"],
                     "match_label": match["match_label"],
                     "home_club": match["home_club"],
                     "away_club": match["away_club"],
                 }
-                for match in competition["matches"]
+                for match in matches
             ]
     return result
 
 
 @router.get("/catalog")
-def match_catalog(request: Request, device_id: Optional[str] = None, tenant_id: str = Query(SINGLE_TENANT_ID), _: None = Depends(require_mobile_context)):
-    context = getattr(request.state, "mobile_context", {})
-    scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
-    _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
-    enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
+def match_catalog(request: Request, device_id: Optional[str] = None, tenant_id: str = Query(SINGLE_TENANT_ID)):
+    enriched = enrich_approved_streams(_load_provider_streams(tenant_id=tenant_id, force_refresh=False), tenant_id=tenant_id)
     catalog = build_catalog(enriched)
     for nation in catalog:
         for competition in nation["competitions"]:
-            for match in competition["matches"]:
-                match.pop("url", None)
-                match.pop("stream_url", None)
+            for club in competition["clubs"]:
+                for stream in club["streams"]:
+                    stream.pop("url", None)
+                    stream.pop("stream_url", None)
     return {"items": catalog}
 
 

@@ -24,9 +24,11 @@ from app.logo_utils import STATIC_ROOT, ensure_static_logo_storage
 from app.notifications import start_notification_scheduler, stop_notification_scheduler
 from app.env_loader import load_backend_env
 from app.routes.auth_login import router as auth_login_router
+from app.routes.catalog import router as catalog_router
 from app.routes.config import router as config_router
 from app.routes.device import router as device_router
 from app.routes.playback import router as playback_router
+from app.routes.sources import router as sources_router
 from app.routes.streams import router as streams_router
 from app.routes.version import router as version_router
 from app.routes.viewer import router as viewer_router
@@ -91,6 +93,8 @@ def _should_audit_request(request: Request) -> bool:
     return not any(path.startswith(prefix) for prefix in AUDIT_EXCLUDED_PREFIXES)
 
 app.include_router(streams_router, prefix="/streams", tags=["streams"])
+app.include_router(catalog_router)
+app.include_router(sources_router)
 app.include_router(config_router, prefix="/config", tags=["config"])
 app.include_router(auth_login_router)
 app.include_router(device_router, prefix="/device", tags=["device"])
