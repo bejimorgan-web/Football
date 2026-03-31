@@ -215,17 +215,24 @@ def streams_by_league(request: Request, include_url: bool = False, tenant_id: st
 
 
 @router.get("/catalog")
-def match_catalog(request: Request, device_id: Optional[str] = None, tenant_id: str = Query(SINGLE_TENANT_ID), _: None = Depends(require_mobile_context)):
+def match_catalog(
+    request: Request,
+    device_id: Optional[str] = None,
+    tenant_id: str = Query(SINGLE_TENANT_ID),
+    include_url: bool = False,
+    _: None = Depends(require_mobile_context),
+):
     context = getattr(request.state, "mobile_context", {})
     scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
     enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
     catalog = build_catalog(enriched)
-    for nation in catalog:
-        for competition in nation["competitions"]:
-            for match in competition["matches"]:
-                match.pop("url", None)
-                match.pop("stream_url", None)
+    if not include_url:
+        for nation in catalog:
+            for competition in nation["competitions"]:
+                for match in competition["matches"]:
+                    match.pop("url", None)
+                    match.pop("stream_url", None)
     return {"items": catalog}
 
 

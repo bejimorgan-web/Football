@@ -2406,7 +2406,12 @@ def load_metadata(*, admin_id: Optional[str] = None, tenant_id: Optional[str] = 
                     raw_club_ids = []
                 current["club_ids"] = [str(club_id).strip() for club_id in raw_club_ids if str(club_id).strip()]
             if key == "competitions":
-                current["participant_type"] = str(current.get("participant_type") or "clubs").strip().lower() or "clubs"
+                current["participant_type"] = {
+                    "clubs": "club",
+                    "club": "club",
+                    "nations": "nation",
+                    "nation": "nation",
+                }.get(str(current.get("participant_type") or "club").strip().lower() or "club", "club")
             normalized_items.append(current)
         payload[key] = normalized_items
 
@@ -2604,7 +2609,7 @@ def upsert_competition(
     competition_type: str,
     logo_url: str = "",
     club_ids: Optional[List[str]] = None,
-    participant_type: str = "clubs",
+    participant_type: str = "club",
     competition_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
 ) -> Dict[str, object]:
@@ -2619,9 +2624,15 @@ def upsert_competition(
     normalized_type = competition_type.strip().lower() or "league"
     if normalized_type not in {"league", "cup"}:
         raise ValueError("Competition type must be 'league' or 'cup'.")
-    normalized_participant_type = str(participant_type or "clubs").strip().lower() or "clubs"
-    if normalized_participant_type not in {"clubs", "nations"}:
-        raise ValueError("Competition participant type must be 'clubs' or 'nations'.")
+    normalized_participant_type = str(participant_type or "club").strip().lower() or "club"
+    normalized_participant_type = {
+        "clubs": "club",
+        "club": "club",
+        "nations": "nation",
+        "nation": "nation",
+    }.get(normalized_participant_type, normalized_participant_type)
+    if normalized_participant_type not in {"club", "nation"}:
+        raise ValueError("Competition participant type must be 'club' or 'nation'.")
     payload = _upsert_entity(
         "competitions",
         {
@@ -2649,19 +2660,19 @@ def upsert_competition(
     _set_competition_club_ids(
         metadata,
         str(payload.get("id") or ""),
-        valid_club_ids if normalized_participant_type == "clubs" else [],
+        valid_club_ids if normalized_participant_type == "club" else [],
         tenant_id=normalized_tenant_id,
     )
     save_metadata(metadata, tenant_id=tenant_id)
     return {
         **payload,
-        "club_ids": valid_club_ids if normalized_participant_type == "clubs" else [],
+        "club_ids": valid_club_ids if normalized_participant_type == "club" else [],
     }
 
 
 def upsert_club(
     name: str,
-    nation_id: str,
+    nation_id: Optional[str] = None,
     logo_url: str = "",
     club_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
@@ -2669,10 +2680,9 @@ def upsert_club(
     normalized_name = _normalize_name(name)
     if not normalized_name:
         raise ValueError("Club name is required.")
-    if not nation_id:
-        raise ValueError("Club must belong to a nation.")
     normalized_tenant_id = _normalize_tenant_id(tenant_id)
-    if get_nation(nation_id, tenant_id=normalized_tenant_id) is None:
+    normalized_nation_id = str(nation_id or "").strip()
+    if normalized_nation_id and get_nation(normalized_nation_id, tenant_id=normalized_tenant_id) is None:
         raise ValueError("Nation not found.")
     return _upsert_entity(
         "clubs",
@@ -2680,7 +2690,7 @@ def upsert_club(
             "id": club_id or "",
             "name": normalized_name,
             "slug": _slugify(normalized_name),
-            "nation_id": nation_id,
+            "nation_id": normalized_nation_id,
             "logo_url": logo_url.strip(),
             "tenant_id": normalized_tenant_id,
         },

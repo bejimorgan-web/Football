@@ -47,19 +47,12 @@ AUDIT_EXCLUDED_PREFIXES = (
 def _cors_allowed_origins() -> list[str]:
     raw = str(os.getenv("CORS_ALLOW_ORIGINS") or "").strip()
     if raw:
+        if raw == "*":
+            return ["*"]
         origins = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
         if origins:
             return origins
-    if is_development_mode():
-        return [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:8000",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:8000",
-        ]
-    return []
+    return ["*"]
 
 
 app = FastAPI(title="Football IPTV API")
@@ -76,7 +69,7 @@ ensure_static_logo_storage()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allowed_origins(),
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=None,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Api-Token", "X-Tenant-Id", "X-Device-Id", "X-Server-Id"],
     expose_headers=["Content-Type"],

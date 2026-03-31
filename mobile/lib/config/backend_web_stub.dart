@@ -14,7 +14,7 @@ Future<String> resolveBackendUrl() async {
   if (configured.isNotEmpty) {
     return ApiConfig.normalize(configured);
   }
-  return ApiConfig.normalize(html.window.location.origin ?? '');
+  return '';
 }
 
 Future<String?> getManualBackendUrl() async {

@@ -763,6 +763,7 @@ class MobileApi {
       ApiConfig.uri(backendUrl, '/streams/catalog', {
         'device_id': deviceId,
         'server_id': branding.serverId,
+        'include_url': 'true',
       }),
       headers: _mobileHeaders(branding, deviceId),
     );
@@ -2124,6 +2125,8 @@ class _PlayerPageState extends State<PlayerPage> {
         security: widget.security,
         branding: widget.branding,
       );
+      debugPrint('STREAM URL: ${widget.match.streamUrl}');
+      debugPrint('PLAYBACK URL: $playbackUrl');
       final controller = VideoPlayerController.networkUrl(Uri.parse(playbackUrl));
       await controller.initialize();
       await controller.play();

@@ -95,6 +95,7 @@ let dashboardPollInFlight = false;
 const isMasterRole = () => String(state.session?.role || "").toLowerCase() === "master";
 const isClientRole = () => !isMasterRole();
 const mobileAppAlreadyGenerated = () => state.branding?.mobile_app_generated === true;
+const DEFAULT_LOGO_SRC = "./default-logo.svg";
 
 function effectiveTenantId() {
   const sessionTenantId = String(state.session?.tenantId || "").trim();
@@ -396,12 +397,128 @@ const previewApiConfig = () => endpointConfig("backend");
 const assetUrl = (url) => {
   const value = String(url || "").trim();
   if (!value) return "";
-  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
   const backendBase = String(previewApiConfig().url || "").trim().replace(/\/+$/, "");
   if (!backendBase) return value;
-  return value.startsWith("/") ? `${backendBase}${value}` : `${backendBase}/${value}`;
+  const resolved = value.startsWith("/") ? `${backendBase}${value}` : `${backendBase}/${value}`;
+  return /^https?:\/\//i.test(resolved) ? resolved : "";
 };
+const safeLogoUrl = (url) => assetUrl(url) || DEFAULT_LOGO_SRC;
 const approvedMap = () => new Map(state.approvedMatches.map((item) => [String(item.stream_id), item]));
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeNationItem(item = {}) {
+  return {
+    ...item,
+    id: String(item.id || ""),
+    name: String(item.name || ""),
+    logo_url: String(item.logo_url || ""),
+  };
+}
+
+function normalizeCompetitionItem(item = {}) {
+  return {
+    ...item,
+    id: String(item.id || ""),
+    name: String(item.name || ""),
+    nation_id: String(item.nation_id || ""),
+    type: String(item.type || "league"),
+    participant_type: String(item.participant_type || "club"),
+    club_ids: asArray(item.club_ids).map((clubId) => String(clubId || "")).filter(Boolean),
+    logo_url: String(item.logo_url || ""),
+  };
+}
+
+function normalizeClubItem(item = {}) {
+  return {
+    ...item,
+    id: String(item.id || ""),
+    name: String(item.name || ""),
+    nation_id: String(item.nation_id || ""),
+    competition_ids: asArray(item.competition_ids).map((competitionId) => String(competitionId || "")).filter(Boolean),
+    logo_url: String(item.logo_url || ""),
+  };
+}
+
+function applyCatalogState({ nations = [], competitions = [], clubs = [] } = {}) {
+  state.nations = asArray(nations).map(normalizeNationItem);
+  state.competitions = asArray(competitions).map(normalizeCompetitionItem);
+  state.clubs = asArray(clubs).map(normalizeClubItem);
+
+  if (!state.selectedNationId || !state.nations.find((item) => item.id === state.selectedNationId)) {
+    state.selectedNationId = state.nations[0]?.id || null;
+  }
+
+  const visibleCompetitions = state.selectedNationId
+    ? state.competitions.filter((item) => item.nation_id === state.selectedNationId)
+    : state.competitions;
+  if (state.selectedCompetitionId && !visibleCompetitions.find((item) => item.id === state.selectedCompetitionId)) {
+    state.selectedCompetitionId = null;
+  }
+}
+
+function compactPayload(payload = {}) {
+  const result = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      result[key] = value
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      result[key] = trimmed;
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function upsertCatalogStateItem(type, item) {
+  if (!item || typeof item !== "object") return;
+  if (type === "nation") {
+    const nextItem = normalizeNationItem(item);
+    state.nations = state.nations.some((entry) => entry.id === nextItem.id)
+      ? state.nations.map((entry) => (entry.id === nextItem.id ? nextItem : entry))
+      : [...state.nations, nextItem];
+    return;
+  }
+  if (type === "competition") {
+    const nextItem = normalizeCompetitionItem(item);
+    state.competitions = state.competitions.some((entry) => entry.id === nextItem.id)
+      ? state.competitions.map((entry) => (entry.id === nextItem.id ? nextItem : entry))
+      : [...state.competitions, nextItem];
+    return;
+  }
+  if (type === "club") {
+    const nextItem = normalizeClubItem(item);
+    state.clubs = state.clubs.some((entry) => entry.id === nextItem.id)
+      ? state.clubs.map((entry) => (entry.id === nextItem.id ? nextItem : entry))
+      : [...state.clubs, nextItem];
+  }
+}
+
+function removeCatalogStateItem(type, id) {
+  const normalizedId = String(id || "");
+  if (type === "nation") {
+    state.nations = state.nations.filter((item) => item.id !== normalizedId);
+    return;
+  }
+  if (type === "competition") {
+    state.competitions = state.competitions.filter((item) => item.id !== normalizedId);
+    return;
+  }
+  if (type === "club") {
+    state.clubs = state.clubs.filter((item) => item.id !== normalizedId);
+  }
+}
 
 function normalizeProviderGroups(groups, streams) {
   if (Array.isArray(groups) && groups.length && typeof groups[0] === "object") {
@@ -477,7 +594,8 @@ function optionMarkup(items, selected = "", includeEmpty = false) {
 
 function logoMarkup(url, label, large = false) {
   const klass = `logo-avatar${large ? " large" : ""}`;
-  return url ? `<div class="${klass}"><img src="${assetUrl(url)}" alt="${html(label)}"></div>` : `<div class="${klass}">${html(String(label || "?").slice(0, 2))}</div>`;
+  const resolvedLogoUrl = safeLogoUrl(url);
+  return `<div class="${klass}"><img src="${resolvedLogoUrl}" alt="${html(label)}" onerror="this.onerror=null;this.src='${DEFAULT_LOGO_SRC}'"></div>`;
 }
 
 function firstLogoValue(...values) {
@@ -494,9 +612,7 @@ function approvedMatchLogoMarkup(match) {
   const competitionLogoUrl = firstLogoValue(match.competition_logo, match.logo, match.nation_logo, match.stream_logo);
   const homeLogo = logoMarkup(homeLogoUrl, match.home_club_name || match.home_team_name || "Home");
   const awayLogo = logoMarkup(awayLogoUrl, match.away_club_name || match.away_team_name || "Away");
-  const competitionLogo = competitionLogoUrl
-    ? `<div class="approved-competition-logo" title="${html(match.competition_name || "Competition")}">${logoMarkup(competitionLogoUrl, match.competition_name || "Competition")}</div>`
-    : "";
+  const competitionLogo = `<div class="approved-competition-logo" title="${html(match.competition_name || "Competition")}">${logoMarkup(competitionLogoUrl, match.competition_name || "Competition")}</div>`;
   return `<div class="approved-match-logos">${homeLogo}<span class="approved-logo-separator">vs</span>${awayLogo}${competitionLogo}</div>`;
 }
 
@@ -869,11 +985,11 @@ function renderMetadataLists() {
     typeHint: "competition",
     markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(competition.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
   }));
-  const visibleClubs = state.selectedCompetitionId
-    ? state.clubs.filter((item) => (item.competition_ids || []).includes(state.selectedCompetitionId))
-    : state.selectedNationId
-      ? state.clubs.filter((item) => item.nation_id === state.selectedNationId)
-      : state.clubs;
+  const selectedCompetition = state.competitions.find((item) => item.id === state.selectedCompetitionId) || null;
+  const selectedClubIds = new Set((selectedCompetition?.club_ids || []).map((item) => String(item)));
+  const visibleClubs = selectedCompetition
+    ? state.clubs.filter((item) => selectedClubIds.has(String(item.id || "")))
+    : [];
   const clubs = visibleClubs.map((club) => ({
     ...club,
     typeHint: "club",
@@ -882,7 +998,7 @@ function renderMetadataLists() {
 
   const selectNation = (nation) => {
     state.selectedNationId = nation.id;
-    state.selectedCompetitionId = state.competitions.find((item) => item.nation_id === nation.id)?.id || null;
+    state.selectedCompetitionId = null;
     renderMetadataLists();
   };
   const selectCompetition = (competition) => {
@@ -899,7 +1015,8 @@ function renderMetadataLists() {
     ...competition,
     markup: competition.markup,
   })), "No competitions yet.", selectCompetition, editCompetition));
-  [el.clubList, el.catalogClubList].forEach((node) => renderEntityList(node, clubs, "No clubs saved.", null, editClub));
+  const clubEmptyMessage = selectedCompetition ? "No clubs linked to this competition." : "Select a competition to view linked clubs.";
+  [el.clubList, el.catalogClubList].forEach((node) => renderEntityList(node, clubs, clubEmptyMessage, null, editClub));
 }
 
 async function editItem(id, type) {
@@ -917,6 +1034,7 @@ async function deleteItem(id, type) {
     if (type === "nation") await window.desktopApi.deleteNation(id);
     if (type === "competition") await window.desktopApi.deleteCompetition(id);
     if (type === "club") await window.desktopApi.deleteClub(id);
+    removeCatalogStateItem(type, id);
     await refreshMetadata();
     showToast("Catalog item deleted.");
   } catch (error) {
@@ -1689,7 +1807,7 @@ function populateEntitySelectors() {
 }
 
 function openEntityModal(type, item = null) {
-  if (type !== "nation" && !state.nations.length) {
+  if (type === "competition" && !state.nations.length) {
     showToast("Create a nation first.", true);
     return;
   }
@@ -1700,7 +1818,7 @@ function openEntityModal(type, item = null) {
   previewEntityLogo(item?.logo_url || "");
   el.entityModalEyebrow.textContent = type === "nation" ? "Nation" : type === "competition" ? "Competition" : "Club";
   el.entityModalTitle.textContent = item ? `Edit ${item.name}` : `New ${type}`;
-  el.entityNationField.classList.toggle("hidden", type === "nation");
+  el.entityNationField.classList.toggle("hidden", type === "nation" || type === "club");
   el.entityCompetitionTypeField.classList.toggle("hidden", type !== "competition");
   el.entityCompetitionParticipantField.classList.toggle("hidden", type !== "competition");
   el.entityCompetitionClubAssignmentsField.classList.toggle("hidden", type !== "competition");
@@ -1717,21 +1835,18 @@ function openEntityModal(type, item = null) {
     renderCompetitionClubAssignments(item?.club_ids || []);
   }
   if (type === "club") {
-    el.entityNationSelect.value = item?.nation_id || state.selectedNationId || state.nations[0]?.id || "";
+    el.entityNationSelect.value = item?.nation_id || "";
   }
   setModalVisibility(el.entityModal, true);
 }
 
 async function refreshMetadata() {
   const [nations, competitions, clubs] = await Promise.all([window.desktopApi.fetchNations(), window.desktopApi.fetchCompetitions(), window.desktopApi.fetchClubs({})]);
-  state.nations = nations.items || [];
-  state.competitions = competitions.items || [];
-  state.clubs = clubs.items || [];
-  if (!state.selectedNationId && state.nations.length) state.selectedNationId = state.nations[0].id;
-  const visibleCompetitions = state.selectedNationId ? state.competitions.filter((item) => item.nation_id === state.selectedNationId) : state.competitions;
-  if (!state.selectedCompetitionId || !visibleCompetitions.find((item) => item.id === state.selectedCompetitionId)) {
-    state.selectedCompetitionId = visibleCompetitions[0]?.id || null;
-  }
+  applyCatalogState({
+    nations: nations.items,
+    competitions: competitions.items,
+    clubs: clubs.items,
+  });
   hydrateSettings();
   renderMetadataLists();
   renderApprovalPanel();
@@ -2477,20 +2592,38 @@ el.entityForm.addEventListener("submit", async (event) => {
   const type = el.entityTypeInput.value;
   const name = el.entityNameInput.value.trim();
   if (!name) return showToast("Name is required.", true);
-  if (type !== "nation" && !el.entityNationSelect.value) return showToast("Select a nation first.", true);
+  if (type === "competition" && !el.entityNationSelect.value) return showToast("Select a valid nation first.", true);
   try {
     const logoUrl = (await uploadSelectedLogo(type, name)) || el.entityLogoPreview.dataset.logoUrl || "";
-    if (type === "nation") await window.desktopApi.saveNation({ id: el.entityIdInput.value || null, name, logo_url: logoUrl });
-    if (type === "competition") await window.desktopApi.saveCompetition({
-      id: el.entityIdInput.value || null,
-      name,
-      nation_id: el.entityNationSelect.value,
-      type: el.entityCompetitionTypeSelect.value,
-      participant_type: el.entityCompetitionParticipantSelect.value || "clubs",
-      club_ids: selectedCompetitionClubIds(),
-      logo_url: logoUrl,
-    });
-    if (type === "club") await window.desktopApi.saveClub({ id: el.entityIdInput.value || null, name, nation_id: el.entityNationSelect.value, logo_url: logoUrl });
+    if (type === "nation") {
+      const result = await window.desktopApi.saveNation(compactPayload({
+        id: el.entityIdInput.value || "",
+        name,
+        logo_url: logoUrl,
+      }));
+      upsertCatalogStateItem("nation", result?.item);
+    }
+    if (type === "competition") {
+      const result = await window.desktopApi.saveCompetition(compactPayload({
+        id: el.entityIdInput.value || "",
+        name,
+        nation_id: el.entityNationSelect.value,
+        type: el.entityCompetitionTypeSelect.value,
+        participant_type: (el.entityCompetitionParticipantSelect.value || "club") === "nations" ? "nation" : "club",
+        club_ids: selectedCompetitionClubIds(),
+        logo_url: logoUrl,
+      }));
+      upsertCatalogStateItem("competition", result?.item);
+    }
+    if (type === "club") {
+      const result = await window.desktopApi.saveClub(compactPayload({
+        id: el.entityIdInput.value || "",
+        name,
+        nation_id: el.entityNationSelect.value || "",
+        logo_url: logoUrl,
+      }));
+      upsertCatalogStateItem("club", result?.item);
+    }
     setModalVisibility(el.entityModal, false);
     await refreshMetadata();
     showToast("Metadata saved.");
@@ -2507,6 +2640,7 @@ el.deleteEntityButton.addEventListener("click", async () => {
     if (type === "nation") await window.desktopApi.deleteNation(id);
     if (type === "competition") await window.desktopApi.deleteCompetition(id);
     if (type === "club") await window.desktopApi.deleteClub(id);
+    removeCatalogStateItem(type, id);
     setModalVisibility(el.entityModal, false);
     await refreshMetadata();
     showToast("Metadata deleted.");

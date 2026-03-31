@@ -262,15 +262,10 @@
         <section class="view" data-view="catalog">
           <section class="card section-card">
             <div class="pane-header"><div><h3>Football Catalog Management</h3><p>Create, edit, and brand nations, competitions, and clubs with reusable logo assets.</p></div></div>
-            <div class="tab-row">
-              <button class="tab-button active" data-catalog-tab="nations">Nations</button>
-              <button class="tab-button" data-catalog-tab="competitions">Competitions</button>
-              <button class="tab-button" data-catalog-tab="clubs">Clubs</button>
-            </div>
             <div class="catalog-management-grid">
-              <article class="catalog-panel active" data-catalog-panel="nations"><div class="pane-header compact"><div><h4>Nations</h4><p>Create and maintain national football collections.</p></div><button class="primary-button small-button" id="catalogNewNationButton">Create Nation</button></div><div id="catalogNationList" class="list tall-list"></div></article>
-              <article class="catalog-panel" data-catalog-panel="competitions"><div class="pane-header compact"><div><h4>Competitions</h4><p>Edit tournaments, leagues, and logos by nation.</p></div><button class="primary-button small-button" id="catalogNewCompetitionButton">Create Competition</button></div><div id="catalogCompetitionList" class="list tall-list"></div></article>
-              <article class="catalog-panel" data-catalog-panel="clubs"><div class="pane-header compact"><div><h4>Clubs</h4><p>Manage teams, club branding, and competition defaults.</p></div><button class="primary-button small-button" id="catalogNewClubButton">Create Club</button></div><div id="catalogClubList" class="list tall-list"></div></article>
+              <article class="catalog-panel catalog-column" data-catalog-panel="nations"><div class="pane-header compact"><div><h4>Nations</h4><p>Select a nation to manage its football structure.</p></div><button class="primary-button small-button" id="catalogNewNationButton">Add Nation</button></div><div id="catalogNationList" class="list tall-list"></div></article>
+              <article class="catalog-panel catalog-column" data-catalog-panel="competitions"><div class="pane-header compact"><div><h4>Competitions</h4><p>Competitions linked to the selected nation.</p></div><button class="primary-button small-button" id="catalogNewCompetitionButton">Add Competition</button></div><div id="catalogCompetitionList" class="list tall-list"></div></article>
+              <article class="catalog-panel catalog-column" data-catalog-panel="clubs"><div class="pane-header compact"><div><h4>Clubs</h4><p>Clubs linked to the selected competition.</p></div><button class="primary-button small-button" id="catalogNewClubButton">Add Club</button></div><div id="catalogClubList" class="list tall-list"></div></article>
             </div>
           </section>
         </section>

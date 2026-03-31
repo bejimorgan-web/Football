@@ -93,7 +93,7 @@ class CompetitionPayload(BaseModel):
     name: str
     nation_id: str
     type: str = "league"
-    participant_type: str = "clubs"
+    participant_type: str = "club"
     club_ids: List[str] = []
     logo_url: Optional[str] = ""
 
@@ -101,7 +101,7 @@ class CompetitionPayload(BaseModel):
 class ClubPayload(BaseModel):
     id: Optional[str] = None
     name: str
-    nation_id: str
+    nation_id: Optional[str] = None
     logo_url: Optional[str] = ""
 
 
