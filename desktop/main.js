@@ -438,25 +438,6 @@ async function validateCurrentSession() {
   if (String(session.role || "").toLowerCase() === "master") {
     return { authenticated: true, route: "dashboard" };
   }
-
-  if (!String(session.licenseToken || "").trim()) {
-    return { authenticated: true, route: "license" };
-  }
-
-  try {
-    await callBackend("/license/validate", {
-      method: "POST",
-      auth: false,
-      body: {
-        license_key: session.licenseKey,
-        license_token: session.licenseToken,
-        device_id: session.deviceId,
-      },
-    });
-  } catch (_) {
-    return { authenticated: true, route: "license" };
-  }
-
   return { authenticated: true, route: "dashboard" };
 }
 
