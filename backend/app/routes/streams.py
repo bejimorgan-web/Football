@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.auth import SINGLE_TENANT_ID, require_mobile_context
+from app.logo_utils import normalize_logo_url
 from app.services.iptv import IPTVAuthError, IPTVProviderError, get_streams_page, list_streams
 from app.storage import (
     build_catalog,
@@ -23,6 +24,46 @@ from app.storage import (
 )
 
 router = APIRouter()
+
+
+def _request_base_url(request: Request) -> str:
+    return f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+
+
+def _normalize_mobile_logo_fields(item: Dict[str, object], *, base_url: str) -> Dict[str, object]:
+    normalized = dict(item)
+    for key in ("nation_logo", "competition_logo", "home_club_logo", "away_club_logo", "stream_logo", "logo", "logo_url"):
+        if key in normalized:
+            normalized[key] = normalize_logo_url(normalized.get(key), base_url=base_url)
+    return normalized
+
+
+def _normalize_mobile_catalog(catalog: List[Dict[str, object]], *, base_url: str) -> List[Dict[str, object]]:
+    normalized_catalog: List[Dict[str, object]] = []
+    for nation in catalog:
+        normalized_nation = dict(nation)
+        normalized_nation["logo"] = normalize_logo_url(normalized_nation.get("logo"), base_url=base_url)
+        competitions = []
+        for competition in nation.get("competitions", []):
+            normalized_competition = dict(competition)
+            normalized_competition["logo"] = normalize_logo_url(normalized_competition.get("logo"), base_url=base_url)
+            matches = []
+            for match in competition.get("matches", []):
+                normalized_match = _normalize_mobile_logo_fields(match, base_url=base_url)
+                home_club = dict(normalized_match.get("home_club") or {})
+                away_club = dict(normalized_match.get("away_club") or {})
+                if home_club:
+                    home_club["logo"] = normalize_logo_url(home_club.get("logo"), base_url=base_url)
+                    normalized_match["home_club"] = home_club
+                if away_club:
+                    away_club["logo"] = normalize_logo_url(away_club.get("logo"), base_url=base_url)
+                    normalized_match["away_club"] = away_club
+                matches.append(normalized_match)
+            normalized_competition["matches"] = matches
+            competitions.append(normalized_competition)
+        normalized_nation["competitions"] = competitions
+        normalized_catalog.append(normalized_nation)
+    return normalized_catalog
 
 
 class StreamCompatPayload(BaseModel):
@@ -170,7 +211,14 @@ def approved_streams(
     context = getattr(request.state, "mobile_context", {})
     scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
-    enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
+    request_base_url = _request_base_url(request)
+    enriched = [
+        _normalize_mobile_logo_fields(item, base_url=request_base_url)
+        for item in enrich_approved_streams(
+            _load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False),
+            tenant_id=scoped_tenant_id,
+        )
+    ]
     total = len(enriched)
     start = (page - 1) * page_size
     end = start + page_size
@@ -226,7 +274,7 @@ def match_catalog(
     scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
     enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
-    catalog = build_catalog(enriched)
+    catalog = _normalize_mobile_catalog(build_catalog(enriched), base_url=_request_base_url(request))
     if not include_url:
         for nation in catalog:
             for competition in nation["competitions"]:

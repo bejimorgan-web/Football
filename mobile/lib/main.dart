@@ -1982,7 +1982,10 @@ class _NetworkLogo extends StatelessWidget {
         child: Image.network(
           resolvedUrl,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Icon(Icons.tv, color: const Color(0xFFB6D4E3)),
+          errorBuilder: (_, __, ___) {
+            debugPrint('LOGO LOAD FAILED: $resolvedUrl');
+            return Icon(fallbackIcon, color: const Color(0xFFB6D4E3));
+          },
         ),
       ),
     );
