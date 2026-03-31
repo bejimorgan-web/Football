@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth import get_current_user, require_role
+from app.settings import is_development_mode
 from app.storage import (
     activate_license_key,
     generate_license_for_admin,
@@ -37,8 +38,7 @@ class LicenseActionPayload(BaseModel):
 
 
 def _enforce_https(request: Request) -> None:
-    host = str(request.headers.get("host") or "")
-    if request.url.scheme != "https" and not any(local in host for local in ("127.0.0.1", "localhost")):
+    if request.url.scheme != "https" and not is_development_mode():
         raise HTTPException(status_code=400, detail="License endpoints require HTTPS outside local development.")
 
 

@@ -44,8 +44,8 @@ def test_empty_server_url_falls_back_to_default(monkeypatch, tmp_path):
     branding = storage.get_branding_config("fallback-tv")
 
     assert branding["backend_url"] == DEFAULT_API_URL
-    assert branding["backend_url_source"] == "default_local"
-    assert "local development backend" in branding["backend_url_notice"]
+    assert branding["backend_url_source"] == "default_api_base"
+    assert "configured API base URL" in branding["backend_url_notice"]
 
 
 def test_manual_server_url_override_still_works(monkeypatch, tmp_path):
@@ -69,6 +69,6 @@ def test_mobile_config_always_returns_resolved_url(monkeypatch, tmp_path):
     runtime_payload = mobile_runtime_config("mobile-fallback")
 
     assert tenant_payload["backend_url"] == DEFAULT_API_URL
-    assert tenant_payload["backend_url_source"] == "default_local"
+    assert tenant_payload["backend_url_source"] == "default_api_base"
     assert runtime_payload["server_url"] == DEFAULT_API_URL
     assert runtime_payload["api_url"] == DEFAULT_API_URL

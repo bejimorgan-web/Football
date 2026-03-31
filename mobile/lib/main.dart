@@ -2121,14 +2121,17 @@ class _PlayerPageState extends State<PlayerPage> {
       _securityEvents = SecurityService.watchSecurityEvents().listen(_handleSecurityEvent);
       _shuffleWatermark();
       _watermarkTimer = Timer.periodic(const Duration(seconds: 30), (_) => _shuffleWatermark());
-      final playbackUrl = await _api.fetchStreamTokenUrl(
-        backendUrl: widget.backendUrl,
-        deviceId: widget.identity.deviceId,
-        streamId: widget.match.streamId,
-        security: widget.security,
-        branding: widget.branding,
-      );
-      debugPrint('STREAM URL: ${widget.match.streamUrl}');
+      final directStreamUrl = resolveUrl(widget.match.streamUrl, baseUrl: widget.backendUrl);
+      print('STREAM URL: ${widget.match.streamUrl}');
+      final playbackUrl = kIsWeb && directStreamUrl.isNotEmpty
+          ? directStreamUrl
+          : await _api.fetchStreamTokenUrl(
+              backendUrl: widget.backendUrl,
+              deviceId: widget.identity.deviceId,
+              streamId: widget.match.streamId,
+              security: widget.security,
+              branding: widget.branding,
+            );
       debugPrint('PLAYBACK URL: $playbackUrl');
       final controller = VideoPlayerController.networkUrl(Uri.parse(playbackUrl));
       await controller.initialize();

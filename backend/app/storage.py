@@ -558,11 +558,11 @@ def get_branding_config(tenant_id: Optional[str] = None) -> Dict[str, object]:
         configured_backend_url
         or api_base_url
     ).strip() or api_base_url
-    backend_url_source = "configured" if configured_backend_url else "default_local"
+    backend_url_source = "configured" if configured_backend_url else "default_api_base"
     backend_url_notice = (
         ""
         if configured_backend_url
-        else f"Using local development backend ({api_base_url})."
+        else f"Using configured API base URL ({api_base_url})."
     )
     branding["api_base_url"] = str(branding.get("api_base_url") or api_base_url)
     branding["server_url"] = str(branding.get("server_url") or resolved_backend_url)

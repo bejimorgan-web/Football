@@ -28,8 +28,7 @@ def ensure_static_logo_storage() -> None:
 
 
 def _normalize_base_url(base_url: Optional[str] = None) -> str:
-    normalized = str(base_url or get_api_base_url() or "http://localhost:8000").strip().rstrip("/")
-    return normalized or "http://localhost:8000"
+    return str(base_url or get_api_base_url() or "").strip().rstrip("/")
 
 
 def _static_logo_url(filename: str, *, base_url: Optional[str] = None) -> str:

@@ -41,7 +41,7 @@ def load_server_config() -> Dict[str, str]:
         os.getenv("LOCAL_SERVER_URL")
         or os.getenv("INTERNAL_SERVER_URL")
         or str(payload.get("local_url") or ""),
-        "http://127.0.0.1:8000",
+        DEFAULT_API_URL,
     )
     return {
         "public_url": public_url,

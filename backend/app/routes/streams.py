@@ -138,7 +138,7 @@ def all_streams(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     category: Optional[str] = None,
-    include_url: bool = False,
+    include_url: bool = True,
 ):
     settings = load_provider_settings()
     if settings is None:

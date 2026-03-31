@@ -45,13 +45,6 @@ AUDIT_EXCLUDED_PREFIXES = (
 )
 
 def _cors_allowed_origins() -> list[str]:
-    raw = str(os.getenv("CORS_ALLOW_ORIGINS") or "").strip()
-    if raw:
-        if raw == "*":
-            return ["*"]
-        origins = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
-        if origins:
-            return origins
     return ["*"]
 
 
@@ -214,10 +207,7 @@ def api_config(request: Request):
     configured_backend_api_url = str(backend_api.get("url") or get_runtime_backend_api_url()).strip()
     configured_public_api_url = str(public_api.get("url") or payload.get("apiBaseUrl") or get_runtime_public_api_url()).strip()
     request_public_api_url = str(request.base_url).rstrip("/")
-    if not configured_public_api_url or "127.0.0.1" in configured_public_api_url or "localhost" in configured_public_api_url:
-        public_api_url = request_public_api_url or configured_public_api_url
-    else:
-        public_api_url = configured_public_api_url
+    public_api_url = configured_public_api_url or request_public_api_url
     backend_api_url = configured_backend_api_url or public_api_url
     payload.update({
         "backend_url": public_api_url,
