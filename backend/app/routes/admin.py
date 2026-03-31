@@ -40,6 +40,7 @@ from app.storage import (
     get_user_stats,
     grant_free_access,
     list_clubs,
+    list_competition_club_links,
     list_competitions,
     list_group_channels,
     list_nations,
@@ -645,7 +646,15 @@ def remove_nation(nation_id: str, request: Request, tenant_id: Optional[str] = Q
 
 @router.get("/competitions")
 def admin_competitions(request: Request, nation_id: Optional[str] = None, tenant_id: Optional[str] = Query(None), _: dict = ADMIN_ACCESS):
-    return {"items": list_competitions(nation_id=nation_id, tenant_id=_scoped_tenant_id(request, tenant_id))}
+    scoped_tenant_id = _scoped_tenant_id(request, tenant_id)
+    items = list_competitions(nation_id=nation_id, tenant_id=scoped_tenant_id)
+    return {
+        "items": items,
+        "competition_club_links": list_competition_club_links(
+            competition_ids=[str(item.get("id") or "") for item in items],
+            tenant_id=scoped_tenant_id,
+        ),
+    }
 
 
 @router.post("/competitions")

@@ -2497,6 +2497,24 @@ def _set_competition_club_ids(metadata: Dict[str, List[Dict[str, object]]], comp
     metadata["competition_club_links"] = next_links
 
 
+def list_competition_club_links(*, competition_ids: Optional[List[str]] = None, tenant_id: Optional[str] = None) -> List[Dict[str, object]]:
+    metadata = load_metadata(tenant_id=tenant_id)
+    normalized_tenant_id = _normalize_tenant_id(tenant_id)
+    allowed_ids = {str(item).strip() for item in (competition_ids or []) if str(item).strip()}
+    links = [
+        {
+            "competition_id": str(item.get("competition_id") or ""),
+            "club_ids": [str(club_id) for club_id in item.get("club_ids", []) if str(club_id).strip()],
+            "tenant_id": normalized_tenant_id,
+        }
+        for item in metadata.get("competition_club_links", [])
+        if item.get("tenant_id") == normalized_tenant_id
+    ]
+    if allowed_ids:
+        links = [item for item in links if item["competition_id"] in allowed_ids]
+    return links
+
+
 def list_nations(tenant_id: Optional[str] = None) -> List[Dict[str, str]]:
     normalized_tenant_id = _normalize_tenant_id(tenant_id)
     return sorted(

@@ -31,6 +31,7 @@ const state = {
   activeProviders: [],
   nations: [],
   competitions: [],
+  competitionClubLinks: [],
   clubs: [],
   streams: [],
   approvedMatches: [],
@@ -443,9 +444,17 @@ function normalizeClubItem(item = {}) {
   };
 }
 
-function applyCatalogState({ nations = [], competitions = [], clubs = [] } = {}) {
+function normalizeCompetitionClubLink(item = {}) {
+  return {
+    competition_id: String(item.competition_id || ""),
+    club_ids: asArray(item.club_ids).map((clubId) => String(clubId || "")).filter(Boolean),
+  };
+}
+
+function applyCatalogState({ nations = [], competitions = [], competitionClubLinks = [], clubs = [] } = {}) {
   state.nations = asArray(nations).map(normalizeNationItem);
   state.competitions = asArray(competitions).map(normalizeCompetitionItem);
+  state.competitionClubLinks = asArray(competitionClubLinks).map(normalizeCompetitionClubLink);
   state.clubs = asArray(clubs).map(normalizeClubItem);
 
   if (!state.selectedNationId || !state.nations.find((item) => item.id === state.selectedNationId)) {
@@ -983,11 +992,11 @@ function renderMetadataLists() {
   const competitions = visibleCompetitions.map((competition) => ({
     ...competition,
     typeHint: "competition",
-    markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(competition.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
+    markup: `${itemContent(competition, competition.name, `${competition.participant_type || "clubs"} / ${(state.competitionClubLinks.find((item) => item.competition_id === competition.id)?.club_ids || []).length} linked clubs`)}${actionButtons(competition, "competition")}`,
   }));
-  const selectedCompetition = state.competitions.find((item) => item.id === state.selectedCompetitionId) || null;
-  const selectedClubIds = new Set((selectedCompetition?.club_ids || []).map((item) => String(item)));
-  const visibleClubs = selectedCompetition
+  const selectedCompetitionLink = state.competitionClubLinks.find((item) => item.competition_id === state.selectedCompetitionId) || null;
+  const selectedClubIds = new Set((selectedCompetitionLink?.club_ids || []).map((item) => String(item)));
+  const visibleClubs = selectedCompetitionLink
     ? state.clubs.filter((item) => selectedClubIds.has(String(item.id || "")))
     : [];
   const clubs = visibleClubs.map((club) => ({
@@ -1845,6 +1854,7 @@ async function refreshMetadata() {
   applyCatalogState({
     nations: nations.items,
     competitions: competitions.items,
+    competitionClubLinks: competitions.competition_club_links,
     clubs: clubs.items,
   });
   hydrateSettings();
