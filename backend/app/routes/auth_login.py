@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.storage import authenticate_admin
+from app.auth import SINGLE_TENANT_ID
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -14,10 +14,17 @@ class AuthLoginPayload(BaseModel):
 
 @router.post("/login")
 def auth_login(payload: AuthLoginPayload):
-    try:
-        session = authenticate_admin(payload.email, payload.password, payload.device_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    session = {
+        "api_token": "open-access",
+        "device_id": payload.device_id,
+        "admin": {
+            "admin_id": "open-admin",
+            "name": "Open Admin",
+            "email": payload.email.strip() or "open@example.com",
+            "role": "admin",
+            "tenant_id": SINGLE_TENANT_ID,
+        },
+    }
     return {
         "access_token": session.get("api_token", ""),
         "token_type": "bearer",

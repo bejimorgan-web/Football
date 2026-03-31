@@ -473,6 +473,20 @@ class DeviceStatus {
   }
 }
 
+DeviceStatus _openAccessStatus(DeviceIdentity identity, {String message = ''}) {
+  return DeviceStatus(
+    deviceId: identity.deviceId,
+    deviceName: identity.deviceName,
+    displayName: identity.deviceName,
+    status: 'active',
+    message: message,
+    isAllowed: true,
+    trialEnd: '',
+    subscriptionEnd: '',
+    freeAccess: true,
+  );
+}
+
 class NationCatalog {
   const NationCatalog({
     required this.id,
@@ -1000,9 +1014,17 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
     if (!runtimeManifest.isSupported) {
       throw Exception('This mobile build is no longer supported. Install the latest app package from the master portal.');
     }
-    await _api.registerDevice(resolvedBackendUrl, identity, security, branding);
-    final status = await _api.fetchStatus(resolvedBackendUrl, identity.deviceId, security, branding);
-    final catalog = status.isAllowed ? await _api.fetchCatalog(resolvedBackendUrl, identity.deviceId, branding) : <NationCatalog>[];
+    try {
+      await _api.registerDevice(resolvedBackendUrl, identity, security, branding);
+    } catch (_) {}
+    DeviceStatus status;
+    try {
+      final fetchedStatus = await _api.fetchStatus(resolvedBackendUrl, identity.deviceId, security, branding);
+      status = fetchedStatus.isAllowed ? fetchedStatus : _openAccessStatus(identity, message: fetchedStatus.message);
+    } catch (_) {
+      status = _openAccessStatus(identity);
+    }
+    final catalog = await _api.fetchCatalog(resolvedBackendUrl, identity.deviceId, branding);
     final liveScores = runtimeManifest.featureFlags.liveScores ? await _api.fetchLiveScores(resolvedBackendUrl) : const <LiveScoreEntry>[];
     final fixtures = runtimeManifest.featureFlags.schedules ? await _api.fetchFixtures(resolvedBackendUrl) : const <FixtureEntry>[];
     final standings = runtimeManifest.featureFlags.standings ? await _api.fetchStandings(resolvedBackendUrl) : const <StandingEntry>[];
@@ -1164,24 +1186,6 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
 
         final session = snapshot.data!;
         _maybePromptForUpdate(session);
-        if (session.status.status == 'blocked' || session.status.status == 'device_blocked' || session.status.status == 'vpn_blocked' || session.status.status == 'insecure_device') {
-          return BlockedAccessPage(
-            backendUrl: session.backendUrl,
-            branding: session.branding,
-            status: session.status,
-            onRefresh: _refresh,
-            onBackendSettings: _showBackendSettings ? _openBackendSettings : null,
-          );
-        }
-        if (!session.status.isAllowed) {
-          return SubscriptionPage(
-            backendUrl: session.backendUrl,
-            branding: session.branding,
-            status: session.status,
-            onRefresh: _refresh,
-            onBackendSettings: _showBackendSettings ? _openBackendSettings : null,
-          );
-        }
         return MatchCatalogPage(
           session: session,
           onRefresh: _refresh,
@@ -1357,114 +1361,6 @@ class MatchListPage extends StatelessWidget {
             const SizedBox(height: 14),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class BlockedAccessPage extends StatelessWidget {
-  const BlockedAccessPage({
-    super.key,
-    required this.backendUrl,
-    required this.branding,
-    required this.status,
-    required this.onRefresh,
-    required this.onBackendSettings,
-  });
-
-  final String backendUrl;
-  final TenantBranding branding;
-  final DeviceStatus status;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function()? onBackendSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    return _InfoScreen(
-      icon: Icons.block,
-      title: '${branding.appName} access disabled',
-      subtitle: status.message,
-      actionLabel: 'Refresh Status',
-      onPressed: onRefresh,
-      secondaryLabel: null,
-      onSecondaryPressed: null,
-    );
-  }
-}
-
-class SubscriptionPage extends StatelessWidget {
-  const SubscriptionPage({
-    super.key,
-    required this.backendUrl,
-    required this.branding,
-    required this.status,
-    required this.onRefresh,
-    required this.onBackendSettings,
-  });
-
-  final String backendUrl;
-  final TenantBranding branding;
-  final DeviceStatus status;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function()? onBackendSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF07141E), Color(0xFF0C2030), Color(0xFF0E3A46)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const SizedBox(height: 16),
-              Text(
-                '${branding.appName} access paused',
-                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                status.message,
-                style: const TextStyle(color: Color(0xFFB8CBDA), height: 1.5),
-              ),
-              const SizedBox(height: 24),
-              const _SubscriptionCard(
-                title: '6 Months',
-                subtitle: 'Single-device access for one registered device.',
-                accent: Color(0xFF13B87B),
-              ),
-              const SizedBox(height: 14),
-              const _SubscriptionCard(
-                title: '1 Year',
-                subtitle: 'Best value for uninterrupted football streaming on one device.',
-                accent: Color(0xFFF2B94B),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Text(
-                  'Subscriptions are activated by the admin panel. Once the admin extends this device, refresh the app and access will open automatically.',
-                  style: TextStyle(color: Color(0xFFE7F3FF), height: 1.5),
-                ),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: onRefresh,
-                child: const Text('Refresh Access'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -2033,42 +1929,6 @@ class _TeamBlock extends StatelessWidget {
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
       ],
-    );
-  }
-}
-
-class _SubscriptionCard extends StatelessWidget {
-  const _SubscriptionCard({
-    required this.title,
-    required this.subtitle,
-    required this.accent,
-  });
-
-  final String title;
-  final String subtitle;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: LinearGradient(
-          colors: [accent.withOpacity(0.28), const Color(0xFF10212E)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: accent.withOpacity(0.45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          Text(subtitle, style: const TextStyle(color: Color(0xFFCAE0EF), height: 1.5)),
-        ],
-      ),
     );
   }
 }
