@@ -1287,7 +1287,7 @@ function renderMobileBuilds() {
       : "No readiness details yet.";
   }
   if (el.mobileBuildAuthSummary) {
-    const authState = authToken ? "Authenticated token present." : "No bearer token available for admin-protected calls.";
+    const authState = "Authentication is disabled for desktop-to-backend requests.";
     const tenantState = ` Tenant: ${effectiveTenantId()}.`;
     const serverState = ` Server ID: ${session.serverId || "-"}.`;
     el.mobileBuildAuthSummary.textContent = `${authState}${tenantState}${serverState}`;
@@ -1298,9 +1298,9 @@ function renderMobileBuilds() {
       `[INFO] session.role: ${session.role || "-"}`,
       `[INFO] session.tenantId: ${session.tenantId || "-"}`,
       `[INFO] session.adminEmail: ${session.adminEmail || "-"}`,
-      `[INFO] session.apiToken_present: ${String(Boolean(String(session.apiToken || "").trim()))}`,
+      `[INFO] session.apiToken_present: false`,
       `[INFO] backendApi.apiToken_present: ${String(Boolean(String(backendApi.apiToken || "").trim()))}`,
-      `[INFO] auth_source: ${usingFallbackEndpointToken ? "backend endpoint token fallback" : authToken ? "session api token" : "none"}`,
+      `[INFO] auth_source: disabled`,
       `[INFO] session.deviceId: ${session.deviceId || "-"}`,
       `[INFO] session.serverId: ${session.serverId || "-"}`,
       `[INFO] backendApi.url: ${backendApi.url || state.settings?.backendUrl || "-"}`,

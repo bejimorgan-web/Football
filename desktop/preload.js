@@ -2,9 +2,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopApi", {
   getAuthStatus: () => ipcRenderer.invoke("auth:get-status"),
-  registerAdmin: (payload) => ipcRenderer.invoke("auth:register", payload),
-  loginAdmin: (payload) => ipcRenderer.invoke("auth:login", payload),
-  renewAdmin: (payload) => ipcRenderer.invoke("auth:renew", payload),
+  registerAdmin: () => ipcRenderer.invoke("auth:register"),
+  loginAdmin: () => ipcRenderer.invoke("auth:login"),
+  renewAdmin: () => ipcRenderer.invoke("auth:renew"),
   notifyLoggedIn: () => ipcRenderer.send("auth:logged-in"),
   logout: () => ipcRenderer.invoke("auth:logout"),
   logoutAdmin: () => ipcRenderer.invoke("auth:logout"),

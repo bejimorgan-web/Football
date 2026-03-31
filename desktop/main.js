@@ -13,7 +13,7 @@ let mainWindow = null;
 let platformClientsWindow = null;
 let providerStore = null;
 let session = null;
-let currentRoute = "login";
+let currentRoute = "dashboard";
 let mainWindowRecoveryInFlight = false;
 
 const updateState = {
@@ -39,19 +39,23 @@ const masterLiveState = {
   error: "",
 };
 
+function defaultServerId() {
+  return `desktop-${machineFingerprint().slice(0, 12)}`;
+}
+
 function defaultSession() {
   return {
     apiToken: "",
     deviceId: machineFingerprint(),
-    serverId: "",
-    adminId: "",
-    role: "",
+    serverId: defaultServerId(),
+    adminId: "local-desktop",
+    role: "master",
     tenantId: "default",
-    adminEmail: "",
-    adminName: "",
-    planId: "",
-    subscriptionStatus: "",
-    accountStatus: "",
+    adminEmail: "local@desktop",
+    adminName: "Local Operator",
+    planId: "single-user",
+    subscriptionStatus: "active",
+    accountStatus: "active",
     licenseKey: "",
     licenseToken: "",
     licenseStatus: "",
@@ -125,19 +129,46 @@ function loadSession() {
   } catch (_) {
     session = defaultSession();
   }
+  session = normalizeSingleUserSession(session);
   return session;
 }
 
 function saveSession(patch = {}) {
-  session = { ...defaultSession(), ...(session || {}), ...(patch || {}) };
+  session = normalizeSingleUserSession({ ...defaultSession(), ...(session || {}), ...(patch || {}) });
   fs.mkdirSync(path.dirname(sessionFilePath()), { recursive: true });
   fs.writeFileSync(sessionFilePath(), JSON.stringify(session, null, 2), "utf8");
   return session;
 }
 
 function clearSession() {
-  session = defaultSession();
-  saveSession(session);
+  return saveSession(defaultSession());
+}
+
+function normalizeSingleUserSession(currentSession = {}) {
+  const defaults = defaultSession();
+  return {
+    ...defaults,
+    ...(currentSession || {}),
+    apiToken: "",
+    deviceId: String(currentSession?.deviceId || defaults.deviceId || "").trim() || defaults.deviceId,
+    serverId: String(currentSession?.serverId || defaults.serverId || "").trim() || defaults.serverId,
+    adminId: String(currentSession?.adminId || defaults.adminId || "").trim() || defaults.adminId,
+    role: "master",
+    tenantId: String(currentSession?.tenantId || defaults.tenantId || "default").trim() || "default",
+    adminEmail: String(currentSession?.adminEmail || defaults.adminEmail || "").trim() || defaults.adminEmail,
+    adminName: String(currentSession?.adminName || defaults.adminName || "").trim() || defaults.adminName,
+    planId: String(currentSession?.planId || defaults.planId || "").trim() || defaults.planId,
+    subscriptionStatus: String(currentSession?.subscriptionStatus || defaults.subscriptionStatus || "active").trim() || "active",
+    accountStatus: String(currentSession?.accountStatus || defaults.accountStatus || "active").trim() || "active",
+  };
+}
+
+async function ensureSingleUserSession({ persist = false } = {}) {
+  session = normalizeSingleUserSession(session || {});
+  if (persist) {
+    saveSession(session);
+  }
+  await syncSessionTenantSetting();
   return session;
 }
 
@@ -212,15 +243,11 @@ async function testApiEndpointConnection(kind, draft = {}) {
   if (!isValidHttpUrl(url)) {
     throw new Error("API URL must start with http:// or https://.");
   }
-  if (!apiToken) {
-    throw new Error("API token is required.");
-  }
 
   const probeUrl = `${url}/config/branding?tenant_id=master`;
   const response = await fetch(probeUrl, {
     method: "GET",
     headers: {
-      Authorization: `Bearer ${apiToken}`,
       "Content-Type": "application/json",
     },
   });
@@ -228,9 +255,7 @@ async function testApiEndpointConnection(kind, draft = {}) {
   const payload = text ? safeJsonParse(text) : {};
   if (!response.ok) {
     if (response.status === 401) {
-      writeDesktopLog(
-        `Backend 401 for ${pathname} auth_present=${Boolean(authToken)} device_present=${Boolean(headers["X-Device-Id"])} server_present=${Boolean(headers["X-Server-Id"])} tenant=${String(session?.tenantId || settings?.tenantId || "default")}`,
-      );
+      writeDesktopLog(`Backend 401 for API endpoint probe ${probeUrl}`);
     }
     const detail = payload?.detail || payload?.message || text || `Request failed with status ${response.status}.`;
     throw new Error(detail);
@@ -264,25 +289,7 @@ async function callBackend(pathname, options = {}) {
   const backendEndpoint = getApiEndpointConfig(settings, "backend");
   const url = `${normalizeBackendUrl(backendEndpoint.url)}${pathname}`;
   const headers = { ...(options.headers || {}) };
-  const authRequired = options.auth !== false;
   const authToken = String(session?.apiToken || "").trim();
-
-  if (authRequired && !authToken) {
-    writeDesktopLog(`Backend request blocked: missing session api token for ${options.method || "GET"} ${url}`);
-    throw new Error("Admin session token is missing. Please log in again.");
-  }
-  if (authRequired && !String(session?.deviceId || "").trim()) {
-    writeDesktopLog(`Backend request blocked: missing device id for ${options.method || "GET"} ${url}`);
-    throw new Error("Desktop device ID is missing. Please log in again.");
-  }
-  if (authRequired && !String(session?.serverId || "").trim()) {
-    writeDesktopLog(`Backend request blocked: missing server id for ${options.method || "GET"} ${url}`);
-    throw new Error("Desktop server ID is missing. Please log in again.");
-  }
-
-  if (authRequired) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
   if (!headers["X-Device-Id"] && session?.deviceId) {
     headers["X-Device-Id"] = session.deviceId;
   }
@@ -297,9 +304,8 @@ async function callBackend(pathname, options = {}) {
   }
 
   writeDesktopLog(
-    `Backend request ${options.method || "GET"} ${url} auth_required=${authRequired} token=${maskToken(authToken)} device_id=${String(headers["X-Device-Id"] || "")} server_id=${String(headers["X-Server-Id"] || "")} headers=${JSON.stringify({
+    `Backend request ${options.method || "GET"} ${url} auth_required=false token=${maskToken(authToken)} device_id=${String(headers["X-Device-Id"] || "")} server_id=${String(headers["X-Server-Id"] || "")} headers=${JSON.stringify({
       ...headers,
-      Authorization: headers.Authorization ? `Bearer ${maskToken(authToken)}` : "",
     })}`,
   );
 
@@ -399,7 +405,7 @@ async function syncSessionTenantSetting() {
 function applyAdminSession(admin, apiToken = session?.apiToken || "") {
   const adminPayload = admin || {};
   return saveSession({
-    apiToken,
+    apiToken: "",
     adminId: String(adminPayload.admin_id || ""),
     role: String(adminPayload.role || ""),
     tenantId: String(adminPayload.tenant_id || "default"),
@@ -414,30 +420,7 @@ function applyAdminSession(admin, apiToken = session?.apiToken || "") {
 }
 
 async function validateCurrentSession() {
-  if (!session?.apiToken) {
-    return { authenticated: false, route: "login" };
-  }
-
-  try {
-    const payload = await callBackend("/admin/validate");
-    applyAdminSession(payload.admin || {}, session.apiToken);
-    await syncSessionTenantSetting();
-  } catch (error) {
-    const message = String(error.message || "");
-    if (message.toLowerCase().includes("expired")) {
-      return { authenticated: false, route: "renewal" };
-    }
-    clearSession();
-    return { authenticated: false, route: "login" };
-  }
-
-  if (String(session.subscriptionStatus || "").toLowerCase() === "expired") {
-    return { authenticated: false, route: "renewal" };
-  }
-
-  if (String(session.role || "").toLowerCase() === "master") {
-    return { authenticated: true, route: "dashboard" };
-  }
+  await ensureSingleUserSession({ persist: true });
   return { authenticated: true, route: "dashboard" };
 }
 
@@ -544,22 +527,15 @@ async function loadMainRoute(route) {
     createWindow();
   }
 
-  currentRoute = route;
-  writeDesktopLog(`Navigating to route: ${route}`);
-
-  if (route === "dashboard") {
-    setDashboardMenu();
-    await mainWindow.loadFile(dashboardPath());
-    return;
-  }
-
-  setLoginMenu();
-  await mainWindow.loadFile(authPagePath(route));
+  currentRoute = "dashboard";
+  writeDesktopLog(`Navigating to route: dashboard${route && route !== "dashboard" ? ` (requested ${route})` : ""}`);
+  setDashboardMenu();
+  await mainWindow.loadFile(dashboardPath());
 }
 
 async function navigateForSession() {
-  const state = await validateCurrentSession();
-  await loadMainRoute(state.route);
+  await validateCurrentSession();
+  await loadMainRoute("dashboard");
 }
 
 async function recoverMainWindow(reason) {
@@ -574,11 +550,11 @@ async function recoverMainWindow(reason) {
     }
     await navigateForSession();
   } catch (error) {
-    writeDesktopLog("Main window recovery failed. Falling back to login route.", error);
+    writeDesktopLog("Main window recovery failed. Falling back to dashboard route.", error);
     try {
-      await loadMainRoute("login");
-    } catch (loginError) {
-      writeDesktopLog("Unable to load login route during recovery.", loginError);
+      await loadMainRoute("dashboard");
+    } catch (dashboardError) {
+      writeDesktopLog("Unable to load dashboard route during recovery.", dashboardError);
     }
   } finally {
     mainWindowRecoveryInFlight = false;
@@ -637,12 +613,10 @@ async function syncActiveProviderToBackend() {
     cache_ttl_seconds: Number(activeProvider?.cacheTtlSeconds || 300),
   };
 
-  if (session?.apiToken) {
-    await callBackend(withTenant("/admin/config", settings), {
-      method: "POST",
-      body: payload,
-    }).catch(() => null);
-  }
+  await callBackend(withTenant("/admin/config", settings), {
+    method: "POST",
+    body: payload,
+  }).catch(() => null);
 
   return { payload };
 }
@@ -872,76 +846,42 @@ function defaultRuntimeStatus(settings) {
 
 function setupIpcHandlers() {
   ipcMain.handle("auth:get-status", async () => {
+    await ensureSingleUserSession({ persist: true });
     const settings = await getSettings();
     return {
-      authenticated: Boolean(session?.apiToken),
+      authenticated: true,
       deviceId: session.deviceId,
       backendUrl: normalizeBackendUrl(getApiEndpointConfig(settings, "backend").url),
       session,
     };
   });
 
-  ipcMain.handle("auth:register", async (_, payload) => {
-    const response = await callBackend("/admin/register", {
-      method: "POST",
-      auth: false,
-      body: {
-        name: payload.name,
-        email: payload.email,
-        password: payload.password,
-        plan_id: payload.planId || "trial",
-        payment_provider: payload.paymentProvider || "",
-        payment_reference: payload.paymentReference || "",
-        device_id: payload.deviceId || session.deviceId,
-      },
-    });
-    applyAdminSession(response.admin || {}, response.api_token || "");
-    await syncSessionTenantSetting();
-    return { authenticated: true, session };
+  ipcMain.handle("auth:register", async () => {
+    await ensureSingleUserSession({ persist: true });
+    return { authenticated: true, skipped: true, session };
   });
 
-  ipcMain.handle("auth:login", async (_, payload) => {
-    const response = await callBackend("/admin/login", {
-      method: "POST",
-      auth: false,
-      body: {
-        email: payload.email,
-        password: payload.password,
-        device_id: payload.deviceId || session.deviceId,
-      },
-    });
-    applyAdminSession(response.admin || {}, response.api_token || "");
-    await syncSessionTenantSetting();
-    return { authenticated: true, session };
+  ipcMain.handle("auth:login", async () => {
+    await ensureSingleUserSession({ persist: true });
+    return { authenticated: true, skipped: true, session };
   });
 
-  ipcMain.handle("auth:renew", async (_, payload) => {
-    const response = await callBackend("/admin/renew", {
-      method: "POST",
-      auth: false,
-      body: {
-        api_token: session.apiToken,
-        plan_id: payload.planId || "1_year",
-        payment_provider: payload.paymentProvider || "",
-        payment_reference: payload.paymentReference || "",
-      },
-    });
-    applyAdminSession(response.admin || {}, session.apiToken);
-    await syncSessionTenantSetting();
-    return { authenticated: true, session };
+  ipcMain.handle("auth:renew", async () => {
+    await ensureSingleUserSession({ persist: true });
+    return { authenticated: true, skipped: true, session };
   });
 
   ipcMain.handle("auth:logout", async () => {
-    clearSession();
+    await ensureSingleUserSession({ persist: true });
     if (platformClientsWindow && !platformClientsWindow.isDestroyed()) {
       platformClientsWindow.close();
     }
-    await loadMainRoute("login");
-    return { authenticated: false, session };
+    await loadMainRoute("dashboard");
+    return { authenticated: true, skipped: true, session };
   });
 
   ipcMain.on("auth:logged-in", () => {
-    navigateForSession().catch(() => loadMainRoute("login"));
+    navigateForSession().catch(() => loadMainRoute("dashboard"));
   });
 
   ipcMain.handle("license:get-status", async () => {
@@ -1011,7 +951,8 @@ function setupIpcHandlers() {
   ipcMain.handle("app:get-default-api-url", async () => DEFAULT_PUBLIC_API_BASE_URL);
 
   ipcMain.handle("app:get-bootstrap", async () => {
-    await syncSessionTenantSetting();
+    await ensureSingleUserSession({ persist: true });
+    await providerStore.migrateLegacyProviders(session.adminId);
     const settings = await providerStore.getSettings();
     const providers = session?.adminId ? await providerStore.listProviders(session.adminId) : [];
     const activeProvider = session?.adminId ? await providerStore.getActiveProvider(session.adminId) : null;
@@ -1370,8 +1311,8 @@ app.whenReady().then(async () => {
   try {
     await navigateForSession();
   } catch (error) {
-    writeDesktopLog("Initial navigation failed. Falling back to login route.", error);
-    await loadMainRoute("login");
+    writeDesktopLog("Initial navigation failed. Falling back to dashboard route.", error);
+    await loadMainRoute("dashboard");
   }
 
   app.on("activate", async () => {
@@ -1380,8 +1321,8 @@ app.whenReady().then(async () => {
       try {
         await navigateForSession();
       } catch (error) {
-        writeDesktopLog("Activation navigation failed. Falling back to login route.", error);
-        await loadMainRoute("login");
+        writeDesktopLog("Activation navigation failed. Falling back to dashboard route.", error);
+        await loadMainRoute("dashboard");
       }
     }
   });
