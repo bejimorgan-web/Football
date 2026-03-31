@@ -1004,9 +1004,12 @@ function playStream(channel) {
   const url = channel?.stream_url || channel?.url || "";
   if (!url) {
     console.error("Missing stream URL", channel);
+    el.previewOverlay.textContent = "This stream is missing a playback URL.";
+    el.previewOverlay.classList.remove("hidden");
     return;
   }
   console.log("Playing stream:", url);
+  el.previewOverlay.textContent = "Loading stream preview...";
   setVideoSource(url);
   const playPromise = video.play();
   if (playPromise && typeof playPromise.catch === "function") {
@@ -1068,17 +1071,32 @@ function setVideoSource(url) {
   video.removeAttribute("src");
   video.load();
   if (!url) {
+    el.previewOverlay.textContent = "No stream selected";
     el.previewOverlay.classList.remove("hidden");
     return;
   }
   el.previewOverlay.classList.add("hidden");
-  if (window.Hls && window.Hls.isSupported()) {
+  const normalizedUrl = String(url || "").trim().toLowerCase();
+  const isHlsStream = normalizedUrl.includes(".m3u8") || normalizedUrl.includes("format=m3u8");
+  if (isHlsStream && window.Hls && window.Hls.isSupported()) {
     hls = new window.Hls({ enableWorker: true });
+    hls.on(window.Hls.Events.ERROR, (_event, data) => {
+      if (!data?.fatal) {
+        return;
+      }
+      console.error("HLS preview error", data);
+      el.previewOverlay.textContent = "The stream could not be loaded in preview.";
+      el.previewOverlay.classList.remove("hidden");
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+    });
     hls.loadSource(url);
     hls.attachMedia(video);
-  } else {
-    video.src = url;
+    return;
   }
+  video.src = url;
 }
 
 function renderPreview() {
@@ -2431,6 +2449,10 @@ el.approveHomeClubSelect.addEventListener("change", updateApprovalPreview);
 el.approveAwayClubSelect.addEventListener("change", updateApprovalPreview);
 el.approveForm.addEventListener("submit", (event) => { event.preventDefault(); submitApproval(); });
 el.approveChannelButton.addEventListener("click", submitApproval);
+el.videoPreview?.addEventListener("error", () => {
+  el.previewOverlay.textContent = "Preview playback failed for this stream.";
+  el.previewOverlay.classList.remove("hidden");
+});
 el.removeApprovedButton.addEventListener("click", async () => {
   const approval = approvedMap().get(String(state.selectedChannel?.id || state.selectedChannel?.stream_id));
   if (!approval) return;
