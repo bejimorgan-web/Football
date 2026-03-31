@@ -3826,19 +3826,7 @@ def _normalize_approved_stream_record(item: Dict[str, object]) -> Optional[Dict[
     stream_id = str(item.get("stream_id") or "").strip()
     if not stream_id:
         return None
-    payload = dict(item)
-    payload["nation_id"] = str(payload.get("nation_id") or "").strip()
-    payload["competition_id"] = str(payload.get("competition_id") or "").strip()
-    club_ids = payload.get("club_ids")
-    if isinstance(club_ids, list):
-        payload["club_ids"] = [str(value).strip() for value in club_ids if str(value).strip()]
-    else:
-        fallback_ids = [
-            str(payload.get("home_club_id") or "").strip(),
-            str(payload.get("away_club_id") or "").strip(),
-        ]
-        payload["club_ids"] = [value for value in fallback_ids if value]
-    return payload
+    return dict(item)
 
 
 def load_approved_streams(*, admin_id: Optional[str] = None, tenant_id: Optional[str] = None) -> List[Dict[str, object]]:
@@ -3930,7 +3918,6 @@ def approve_stream_mapping(
         "away_club_id": away_club["id"],
         "away_club": away_club["name"],
         "away_club_logo": away_club.get("logo_url", ""),
-        "club_ids": [home_club["id"], away_club["id"]],
         "kickoff_label": normalized_kickoff,
         "match_label": normalized_kickoff or f"{home_club['name']} vs {away_club['name']}",
         "updated_at": utc_now_iso(),
@@ -4034,7 +4021,6 @@ def enrich_approved_streams(current_streams: List[Dict[str, str]], tenant_id: Op
                 "away_club_name": away_club["name"],
                 "away_club": away_club["name"],
                 "away_club_logo": normalize_logo_url(away_club.get("logo_url", ""), base_url=api_base_url),
-                "club_ids": [home_club["id"], away_club["id"]],
                 "kickoff_label": kickoff_label,
                 "match_label": match_label,
             }
@@ -4056,8 +4042,6 @@ def build_catalog(enriched_streams: List[Dict[str, object]]) -> List[Dict[str, o
     for stream in enriched_streams:
         nation_id = str(stream["nation_id"])
         competition_id = str(stream["competition_id"])
-        home_club_id = str(stream["home_club_id"])
-        away_club_id = str(stream["away_club_id"])
 
         nation_entry = nations.setdefault(
             nation_id,
@@ -4077,73 +4061,45 @@ def build_catalog(enriched_streams: List[Dict[str, object]]) -> List[Dict[str, o
                 "name": stream["competition_name"],
                 "type": stream.get("competition_type", "league"),
                 "logo": stream.get("competition_logo", ""),
-                "clubs": {},
+                "matches": [],
             },
         )
 
-        clubs = competition_entry["clubs"]
-        clubs.setdefault(
-            home_club_id,
+        competition_entry["matches"].append(
             {
-                "id": home_club_id,
-                "name": stream["home_club_name"],
-                "logo": stream.get("home_club_logo", ""),
-                "competition_id": competition_id,
-                "streams": [],
-            },
+                "stream_id": stream["stream_id"],
+                "raw_name": stream["raw_name"],
+                "stream_url": stream["stream_url"],
+                "url": stream["stream_url"],
+                "stream_logo": stream.get("stream_logo", ""),
+                "competition_name": stream["competition_name"],
+                "competition_logo": stream.get("competition_logo", ""),
+                "match_label": stream["match_label"],
+                "kickoff_label": stream.get("kickoff_label", ""),
+                "home_team_name": stream["home_club_name"],
+                "home_team_logo": stream.get("home_club_logo", ""),
+                "away_team_name": stream["away_club_name"],
+                "away_team_logo": stream.get("away_club_logo", ""),
+                "home_club": {
+                    "id": stream["home_club_id"],
+                    "name": stream["home_club_name"],
+                    "logo": stream.get("home_club_logo", ""),
+                },
+                "away_club": {
+                    "id": stream["away_club_id"],
+                    "name": stream["away_club_name"],
+                    "logo": stream.get("away_club_logo", ""),
+                },
+                "tenant_id": stream.get("tenant_id", DEFAULT_TENANT_ID),
+            }
         )
-        clubs.setdefault(
-            away_club_id,
-            {
-                "id": away_club_id,
-                "name": stream["away_club_name"],
-                "logo": stream.get("away_club_logo", ""),
-                "competition_id": competition_id,
-                "streams": [],
-            },
-        )
-
-        stream_payload = {
-            "stream_id": stream["stream_id"],
-            "raw_name": stream["raw_name"],
-            "stream_url": stream["stream_url"],
-            "url": stream["stream_url"],
-            "stream_logo": stream.get("stream_logo", ""),
-            "competition_id": competition_id,
-            "competition_name": stream["competition_name"],
-            "competition_logo": stream.get("competition_logo", ""),
-            "nation_id": nation_id,
-            "match_label": stream["match_label"],
-            "kickoff_label": stream.get("kickoff_label", ""),
-            "club_ids": [home_club_id, away_club_id],
-            "home_team_name": stream["home_club_name"],
-            "home_team_logo": stream.get("home_club_logo", ""),
-            "away_team_name": stream["away_club_name"],
-            "away_team_logo": stream.get("away_club_logo", ""),
-            "home_club": {
-                "id": home_club_id,
-                "name": stream["home_club_name"],
-                "logo": stream.get("home_club_logo", ""),
-            },
-            "away_club": {
-                "id": away_club_id,
-                "name": stream["away_club_name"],
-                "logo": stream.get("away_club_logo", ""),
-            },
-            "tenant_id": stream.get("tenant_id", DEFAULT_TENANT_ID),
-        }
-        clubs[home_club_id]["streams"].append(stream_payload)
-        if away_club_id != home_club_id:
-            clubs[away_club_id]["streams"].append(stream_payload)
 
     result = []
     for nation in sorted(nations.values(), key=lambda item: str(item["name"]).lower()):
         competitions = nation.pop("competitions")
-        normalized_competitions = []
-        for competition in sorted(competitions.values(), key=lambda item: str(item["name"]).lower()):
-            clubs = competition.pop("clubs")
-            competition["clubs"] = sorted(clubs.values(), key=lambda item: str(item["name"]).lower())
-            normalized_competitions.append(competition)
-        nation["competitions"] = normalized_competitions
+        nation["competitions"] = sorted(
+            competitions.values(),
+            key=lambda item: str(item["name"]).lower(),
+        )
         result.append(nation)
     return result
