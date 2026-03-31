@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app.routes import tenant
+from app import storage
 
 
 class TenantAuthResolutionTests(unittest.TestCase):
@@ -35,6 +36,25 @@ class TenantAuthResolutionTests(unittest.TestCase):
 
         mocked_auth.assert_called_once_with("johne-c47921", "owner", "secret")
         self.assertEqual(result["tenant"]["tenant_id"], "johne-c47921")
+
+    def test_authenticate_tenant_admin_falls_back_to_linked_admin_email_credentials(self) -> None:
+        tenant_record = {
+            "tenant_id": "clubtv",
+            "admin_credentials": {"username": "", "password": ""},
+        }
+        admin_record = {
+            "admin_id": "admin-1",
+            "tenant_id": "clubtv",
+            "email": "owner@example.com",
+            "password_salt": "salt-1",
+            "password_hash": storage._hash_secret("secret123", "salt-1"),
+        }
+
+        with patch.object(storage, "get_tenant", return_value=tenant_record), \
+            patch.object(storage, "get_admin_by_tenant_id", return_value=admin_record):
+            result = storage.authenticate_tenant_admin("clubtv", "owner@example.com", "secret123")
+
+        self.assertEqual(result["tenant_id"], "clubtv")
 
 
 if __name__ == "__main__":

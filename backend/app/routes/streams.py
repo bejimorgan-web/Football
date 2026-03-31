@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.auth import require_mobile_context
+from app.auth import SINGLE_TENANT_ID, require_mobile_context
 from app.services.iptv import IPTVAuthError, IPTVProviderError, get_streams_page, list_streams
 from app.storage import (
     build_catalog,
@@ -35,7 +35,7 @@ class StreamCompatPayload(BaseModel):
     away_club_name: str = ""
     away_club_logo: str = ""
     stream_url: str = ""
-    tenant_id: str = "default"
+    tenant_id: str = SINGLE_TENANT_ID
 
 
 def _require_settings(tenant_id: Optional[str] = None):
@@ -123,7 +123,7 @@ def all_streams(
 
 @router.post("/add")
 def add_stream(payload: StreamCompatPayload):
-    tenant_id = str(payload.tenant_id or "default").strip() or "default"
+    tenant_id = SINGLE_TENANT_ID
     streams = load_approved_streams(tenant_id=tenant_id)
     record = {
         "tenant_id": tenant_id,
@@ -152,9 +152,9 @@ def add_stream(payload: StreamCompatPayload):
 
 
 @router.delete("/{stream_id}")
-def delete_stream(stream_id: str, tenant_id: str = Query("default")):
-    remove_approved_stream(stream_id, tenant_id=tenant_id)
-    return {"status": "ok", "stream_id": stream_id, "tenant_id": tenant_id}
+def delete_stream(stream_id: str):
+    remove_approved_stream(stream_id, tenant_id=SINGLE_TENANT_ID)
+    return {"status": "ok", "stream_id": stream_id, "tenant_id": SINGLE_TENANT_ID}
 
 
 @router.get("/approved")
@@ -164,11 +164,11 @@ def approved_streams(
     page_size: int = Query(50, ge=1, le=500),
     include_url: bool = False,
     device_id: Optional[str] = None,
-    tenant_id: str = Query("default"),
+    tenant_id: str = Query(SINGLE_TENANT_ID),
     _: None = Depends(require_mobile_context),
 ):
     context = getattr(request.state, "mobile_context", {})
-    scoped_tenant_id = context.get("tenant_id") or tenant_id
+    scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
     enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
     total = len(enriched)
@@ -195,9 +195,9 @@ def approved_streams(
 
 
 @router.get("/leagues")
-def streams_by_league(request: Request, include_url: bool = False, tenant_id: str = Query("default"), _: None = Depends(require_mobile_context)) -> Dict[str, List[Dict]]:
+def streams_by_league(request: Request, include_url: bool = False, tenant_id: str = Query(SINGLE_TENANT_ID), _: None = Depends(require_mobile_context)) -> Dict[str, List[Dict]]:
     context = getattr(request.state, "mobile_context", {})
-    scoped_tenant_id = context.get("tenant_id") or tenant_id
+    scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     catalog = build_catalog(enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id))
     result: Dict[str, List[Dict]] = {}
     for nation in catalog:
@@ -215,9 +215,9 @@ def streams_by_league(request: Request, include_url: bool = False, tenant_id: st
 
 
 @router.get("/catalog")
-def match_catalog(request: Request, device_id: Optional[str] = None, tenant_id: str = Query("default"), _: None = Depends(require_mobile_context)):
+def match_catalog(request: Request, device_id: Optional[str] = None, tenant_id: str = Query(SINGLE_TENANT_ID), _: None = Depends(require_mobile_context)):
     context = getattr(request.state, "mobile_context", {})
-    scoped_tenant_id = context.get("tenant_id") or tenant_id
+    scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(device_id, tenant_id=scoped_tenant_id)
     enriched = enrich_approved_streams(_load_provider_streams(tenant_id=scoped_tenant_id, force_refresh=False), tenant_id=scoped_tenant_id)
     catalog = build_catalog(enriched)
@@ -234,7 +234,7 @@ def stream_token(
     request: Request,
     stream_id: str,
     device_id: str = Query(...),
-    tenant_id: str = Query("default"),
+    tenant_id: str = Query(SINGLE_TENANT_ID),
     country: Optional[str] = None,
     device_fingerprint: Optional[str] = None,
     vpn_active: Optional[bool] = False,
@@ -243,7 +243,7 @@ def stream_token(
     _: None = Depends(require_mobile_context),
 ):
     context = getattr(request.state, "mobile_context", {})
-    scoped_tenant_id = context.get("tenant_id") or tenant_id
+    scoped_tenant_id = context.get("tenant_id") or SINGLE_TENANT_ID
     _enforce_device_access(
         device_id,
         tenant_id=scoped_tenant_id,

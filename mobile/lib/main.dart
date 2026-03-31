@@ -15,151 +15,13 @@ import 'package:video_player/video_player.dart';
 
 import 'config/api_config.dart';
 import 'config/backend.dart' as backend_config;
-import 'config/network_config.dart';
 import 'config/tenant_config.dart';
-import 'services/tenant_service.dart';
 import 'security/security_service.dart';
 
 const String _deviceIdKey = 'device_id';
 const String _deviceNameKey = 'device_name';
 const String _devicePlatformKey = 'device_platform';
-const String _tenantIdStorageKey = 'tenant_id';
 const String _appVersion = '0.1.0';
-const String _manualBackendUrlKey = 'manual_backend_url';
-const String _controlPanelConfigEndpoint = '/api/config';
-String get _bootstrapMasterWebBackendUrl => NetworkConfig.baseUrl;
-
-class _ControlPanelApiConfig {
-  const _ControlPanelApiConfig({
-    required this.backendApiUrl,
-    required this.backendApiToken,
-    required this.publicApiUrl,
-    required this.publicApiToken,
-  });
-
-  final String backendApiUrl;
-  final String backendApiToken;
-  final String publicApiUrl;
-  final String publicApiToken;
-}
-
-Future<String?> _getBootstrapManualBackendUrl() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_manualBackendUrlKey);
-  } catch (_) {
-    return null;
-  }
-}
-
-Future<void> _saveBootstrapTenantId(String tenant) async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tenantIdStorageKey, tenant.trim());
-  } catch (_) {
-    // Best-effort local persistence only.
-  }
-}
-
-String _extractConfigString(Map<String, dynamic> source, List<String> keys) {
-  for (final key in keys) {
-    final value = '${source[key] ?? ''}'.trim();
-    if (value.isNotEmpty) {
-      return value;
-    }
-  }
-  return '';
-}
-
-_ControlPanelApiConfig? _parseControlPanelApiConfig(Map<String, dynamic> payload) {
-  final backendMap = payload['backend_api'] is Map<String, dynamic>
-      ? payload['backend_api'] as Map<String, dynamic>
-      : payload['backendApi'] is Map<String, dynamic>
-          ? payload['backendApi'] as Map<String, dynamic>
-          : const <String, dynamic>{};
-  final publicMap = payload['public_api'] is Map<String, dynamic>
-      ? payload['public_api'] as Map<String, dynamic>
-      : payload['publicApi'] is Map<String, dynamic>
-          ? payload['publicApi'] as Map<String, dynamic>
-          : const <String, dynamic>{};
-
-  final parsedBackendUrl = ApiConfig.normalize(_extractConfigString(backendMap, const ['url', 'backend_url']));
-  final parsedPublicUrl = ApiConfig.normalize(
-    _extractConfigString(publicMap, const ['url', 'api_base_url']).isNotEmpty
-        ? _extractConfigString(publicMap, const ['url', 'api_base_url'])
-        : _extractConfigString(payload, const ['apiBaseUrl', 'publicApiUrl', 'public_api_url']),
-  );
-  final backendApiUrlValue = parsedBackendUrl.isNotEmpty
-      ? parsedBackendUrl
-      : ApiConfig.normalize(_extractConfigString(payload, const ['backendUrl', 'backend_url', 'apiBaseUrl', 'publicApiUrl', 'public_api_url']));
-  final publicApiUrlValue = parsedPublicUrl.isNotEmpty ? parsedPublicUrl : backendApiUrlValue;
-  final backendApiTokenValue = _extractConfigString(
-    backendMap,
-    const ['api_token', 'apiToken', 'token'],
-  ).isNotEmpty
-      ? _extractConfigString(backendMap, const ['api_token', 'apiToken', 'token'])
-      : _extractConfigString(payload, const ['backendApiToken', 'backend_api_token', 'api_token', 'apiToken']);
-  final publicApiTokenValue = _extractConfigString(
-    publicMap,
-    const ['api_token', 'apiToken', 'token'],
-  ).isNotEmpty
-      ? _extractConfigString(publicMap, const ['api_token', 'apiToken', 'token'])
-      : _extractConfigString(payload, const ['publicApiToken', 'public_api_token']);
-
-  if (backendApiUrlValue.isEmpty && publicApiUrlValue.isEmpty) {
-    return null;
-  }
-
-  return _ControlPanelApiConfig(
-    backendApiUrl: backendApiUrlValue,
-    backendApiToken: backendApiTokenValue,
-    publicApiUrl: publicApiUrlValue,
-    publicApiToken: publicApiTokenValue,
-  );
-}
-
-Future<_ControlPanelApiConfig?> _fetchControlPanelApiConfig() async {
-  final configUri = ApiConfig.uri(_bootstrapMasterWebBackendUrl, _controlPanelConfigEndpoint);
-  final response = await http.get(configUri).timeout(const Duration(seconds: 3));
-  if (response.statusCode != 200) {
-    throw Exception('Control panel config request failed (${response.statusCode}).');
-  }
-  final payload = jsonDecode(response.body);
-  if (payload is! Map<String, dynamic>) {
-    throw Exception('Control panel config payload was invalid.');
-  }
-  return _parseControlPanelApiConfig(payload);
-}
-
-Future<Map<String, dynamic>> fetchControlPanelConfig() async {
-  try {
-    final parsed = await _fetchControlPanelApiConfig();
-    if (parsed == null) {
-      throw Exception('Control panel config did not include API URLs.');
-    }
-    return <String, dynamic>{
-      'backend_api': <String, dynamic>{
-        'url': parsed.backendApiUrl,
-        'api_token': parsed.backendApiToken,
-      },
-      'public_api': <String, dynamic>{
-        'url': parsed.publicApiUrl,
-        'api_token': parsed.publicApiToken,
-      },
-    };
-  } catch (_) {
-    return <String, dynamic>{
-      'backend_api': <String, dynamic>{
-        'url': _bootstrapMasterWebBackendUrl,
-        'api_token': '',
-      },
-      'public_api': <String, dynamic>{
-        'url': _bootstrapMasterWebBackendUrl,
-        'api_token': '',
-      },
-    };
-  }
-}
 
 Future<void> bootstrap() async {
   backendApiUrl = '';
@@ -168,69 +30,14 @@ Future<void> bootstrap() async {
   publicApiToken = '';
   activeBackendUrl = '';
   activeApiToken = '';
-  if (kIsWeb) {
-    tenantId = 'master';
-    await _saveBootstrapTenantId(tenantId);
-    backendApiUrl = ApiConfig.normalize(_bootstrapMasterWebBackendUrl);
-    publicApiUrl = backendApiUrl;
-    backendUrl = backendApiUrl;
-  } else {
-    tenantId = embeddedTenantId.trim().isEmpty ? 'default' : embeddedTenantId.trim();
-    await _saveBootstrapTenantId(tenantId);
-    publicApiUrl = ApiConfig.normalize(embeddedTenantBackendUrl);
-    publicApiToken = embeddedTenantApiToken.trim();
-    backendUrl = publicApiUrl;
+  final resolvedBackend = ApiConfig.normalize(await backend_config.resolveBackendUrl());
+  if (resolvedBackend.isEmpty) {
+    throw Exception('API_BASE_URL is not configured for Flutter.');
   }
-
-  final currentBackend = backendUrl.trim();
-  final fallbackBackend = kIsWeb ? _bootstrapMasterWebBackendUrl : currentBackend;
-
-  if (!kIsWeb) {
-    try {
-      final manualUrl = await _getBootstrapManualBackendUrl().timeout(const Duration(seconds: 2));
-      final normalizedManualUrl = manualUrl?.trim() ?? '';
-      if (normalizedManualUrl.isNotEmpty) {
-        backendUrl = ApiConfig.normalize(normalizedManualUrl);
-      }
-    } catch (error) {
-      if (backendUrl.trim().isEmpty) {
-        backendUrl = ApiConfig.normalize(embeddedTenantBackendUrl);
-      }
-    }
-  }
-
-  if (kIsWeb) {
-    try {
-      final config = await fetchControlPanelConfig();
-      final backendConfig = config['backend_api'] as Map<String, dynamic>? ?? const <String, dynamic>{};
-      final publicConfig = config['public_api'] as Map<String, dynamic>? ?? const <String, dynamic>{};
-      final configuredBackendUrl = '${backendConfig['url'] ?? ''}'.trim();
-      final configuredPublicUrl = '${publicConfig['url'] ?? ''}'.trim();
-      backendApiUrl = ApiConfig.normalize(configuredBackendUrl.isNotEmpty ? configuredBackendUrl : backendApiUrl);
-      backendApiToken = '${backendConfig['api_token'] ?? ''}'.trim();
-      publicApiUrl = ApiConfig.normalize(configuredPublicUrl.isNotEmpty ? configuredPublicUrl : backendApiUrl);
-      publicApiToken = '${publicConfig['api_token'] ?? ''}'.trim();
-    } catch (_) {}
-    final manualUrl = (await _getBootstrapManualBackendUrl().timeout(const Duration(seconds: 2)).catchError((_) => null))?.trim() ?? '';
-    if (backendApiUrl.trim().isEmpty) {
-      backendApiUrl = ApiConfig.normalize(manualUrl.isNotEmpty ? manualUrl : _bootstrapMasterWebBackendUrl);
-    }
-    publicApiUrl = ApiConfig.normalize(publicApiUrl.isNotEmpty ? publicApiUrl : backendApiUrl);
-    activeBackendUrl = backendApiUrl.isNotEmpty ? backendApiUrl : publicApiUrl;
-    activeApiToken = backendApiToken;
-    backendUrl = activeBackendUrl;
-    return;
-  }
-
-  try {
-    await loadTenantConfig().timeout(const Duration(seconds: 5));
-  } catch (_) {
-    final safeFallback = backendUrl.trim().isNotEmpty ? backendUrl : fallbackBackend;
-    backendUrl = ApiConfig.normalize(safeFallback);
-  }
-
-  publicApiUrl = ApiConfig.normalize(backendUrl);
-  activeBackendUrl = publicApiUrl;
+  backendUrl = resolvedBackend;
+  backendApiUrl = resolvedBackend;
+  publicApiUrl = resolvedBackend;
+  activeBackendUrl = resolvedBackend;
   activeApiToken = publicApiToken;
 }
 
@@ -400,7 +207,6 @@ class _FootballStreamingAppState extends State<FootballStreamingApp> {
 
 class TenantBranding {
   const TenantBranding({
-    required this.tenantId,
     required this.appName,
     required this.logoUrl,
     required this.primaryColor,
@@ -415,7 +221,6 @@ class TenantBranding {
     required this.supportedLanguages,
   });
 
-  final String tenantId;
   final String appName;
   final String logoUrl;
   final Color primaryColor;
@@ -437,7 +242,6 @@ class TenantBranding {
   }
 
   factory TenantBranding.fallback() => TenantBranding(
-        tenantId: 'default',
         appName: 'Football Streaming',
         logoUrl: '',
         primaryColor: const Color(0xFF11B37C),
@@ -461,7 +265,6 @@ class TenantBranding {
         .where((item) => item.isNotEmpty)
         .toList();
     return TenantBranding(
-      tenantId: '${json['tenant_id'] ?? 'default'}',
       appName: '${branding['app_name'] ?? json['name'] ?? 'Football Streaming'}',
       logoUrl: '${branding['logo_url'] ?? ''}',
       primaryColor: _parseHexColor('${branding['primary_color'] ?? '#11B37C'}', const Color(0xFF11B37C)),
@@ -771,7 +574,6 @@ class MatchItem {
 class AppSession {
   const AppSession({
     required this.backendUrl,
-    required this.tenantId,
     required this.branding,
     required this.identity,
     required this.security,
@@ -784,7 +586,6 @@ class AppSession {
   });
 
   final String backendUrl;
-  final String tenantId;
   final TenantBranding branding;
   final DeviceIdentity identity;
   final SecuritySnapshot security;
@@ -817,19 +618,8 @@ bool _isVersionLower(String currentVersion, String latestVersion) {
 class MobileApi {
   const MobileApi();
 
-  Future<String> ensureTenantId() async {
-    return tenantId.trim();
-  }
-
-  Future<void> saveTenantId(String newTenantId) async {
-    // Tenant assignment is fixed at startup by embeddedTenantId or web master mode.
-    return;
-  }
-
-  Future<TenantBranding> fetchBranding(String backendUrl, String tenantId) async {
-    final uri = ApiConfig.uri(backendUrl, '/config/branding', {
-      'tenant_id': tenantId,
-    });
+  Future<TenantBranding> fetchBranding(String backendUrl) async {
+    final uri = ApiConfig.uri(backendUrl, '/config/branding');
     final response = await http.get(uri).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) {
       throw Exception(_extractDetail(response.body, response.statusCode));
@@ -838,9 +628,8 @@ class MobileApi {
     return TenantBranding.fromJson(payload);
   }
 
-  Future<RuntimeManifest> fetchRuntimeManifest(String backendUrl, String tenantId) async {
+  Future<RuntimeManifest> fetchRuntimeManifest(String backendUrl) async {
     final uri = ApiConfig.uri(backendUrl, '/api/version', {
-      'tenant_id': tenantId,
       'current_version': _appVersion,
       'client': 'mobile',
       'platform': defaultTargetPlatform.name,
@@ -909,17 +698,15 @@ class MobileApi {
 
   Future<void> registerDevice(
     String backendUrl,
-    String tenantId,
     DeviceIdentity identity,
     SecuritySnapshot security,
     TenantBranding branding,
   ) async {
     final response = await http.post(
       ApiConfig.uri(backendUrl, '/device/register'),
-      headers: _mobileHeaders(branding, tenantId, identity.deviceId),
+      headers: _mobileHeaders(branding, identity.deviceId),
       body: jsonEncode({
         'device_id': identity.deviceId,
-        'tenant_id': tenantId,
         'device_name': identity.deviceName,
         'platform': identity.platform,
         'app_version': _appVersion,
@@ -937,13 +724,11 @@ class MobileApi {
 
   Future<DeviceStatus> fetchStatus(
     String backendUrl,
-    String tenantId,
     String deviceId,
     SecuritySnapshot security,
     TenantBranding branding,
   ) async {
     final uri = ApiConfig.uri(backendUrl, '/device/status', {
-      'tenant_id': tenantId,
       'device_id': deviceId,
       'country': security.preferredCountry,
       'device_fingerprint': security.deviceFingerprint,
@@ -951,7 +736,7 @@ class MobileApi {
       'secure_device': '${security.secureDevice}',
       'app_signature_valid': '${security.appSignatureValid}',
     });
-    final response = await http.get(uri, headers: _mobileHeaders(branding, tenantId, deviceId));
+    final response = await http.get(uri, headers: _mobileHeaders(branding, deviceId));
     if (response.statusCode != 200) {
       throw Exception(_extractDetail(response.body, response.statusCode));
     }
@@ -959,14 +744,13 @@ class MobileApi {
     return DeviceStatus.fromJson(payload['item'] as Map<String, dynamic>? ?? const {});
   }
 
-  Future<List<NationCatalog>> fetchCatalog(String backendUrl, String tenantId, String deviceId, TenantBranding branding) async {
+  Future<List<NationCatalog>> fetchCatalog(String backendUrl, String deviceId, TenantBranding branding) async {
     final response = await http.get(
       ApiConfig.uri(backendUrl, '/streams/catalog', {
-        'tenant_id': tenantId,
         'device_id': deviceId,
         'server_id': branding.serverId,
       }),
-      headers: _mobileHeaders(branding, tenantId, deviceId),
+      headers: _mobileHeaders(branding, deviceId),
     );
     if (response.statusCode != 200) {
       throw Exception(_extractDetail(response.body, response.statusCode));
@@ -1037,14 +821,12 @@ class MobileApi {
 
   Future<String> fetchStreamTokenUrl({
     required String backendUrl,
-    required String tenantId,
     required String deviceId,
     required String streamId,
     required SecuritySnapshot security,
     required TenantBranding branding,
   }) async {
     final uri = ApiConfig.uri(backendUrl, '/streams/token/$streamId', {
-      'tenant_id': tenantId,
       'device_id': deviceId,
       'server_id': branding.serverId,
       'country': security.preferredCountry,
@@ -1053,7 +835,7 @@ class MobileApi {
       'secure_device': '${security.secureDevice}',
       'app_signature_valid': '${security.appSignatureValid}',
     });
-    final response = await http.get(uri, headers: _mobileHeaders(branding, tenantId, deviceId));
+    final response = await http.get(uri, headers: _mobileHeaders(branding, deviceId));
     if (response.statusCode != 200) {
       throw Exception(_extractDetail(response.body, response.statusCode));
     }
@@ -1067,7 +849,6 @@ class MobileApi {
 
   Future<void> startViewer({
     required String backendUrl,
-    required String tenantId,
     required DeviceIdentity identity,
     required MatchItem match,
     required TenantBranding branding,
@@ -1075,10 +856,9 @@ class MobileApi {
   }) async {
     final response = await http.post(
       ApiConfig.uri(backendUrl, '/viewer/start'),
-      headers: _mobileHeaders(branding, tenantId, identity.deviceId),
+      headers: _mobileHeaders(branding, identity.deviceId),
       body: jsonEncode({
         'device_id': identity.deviceId,
-        'tenant_id': tenantId,
         'server_id': branding.serverId,
         'stream_id': match.streamId,
         'competition': match.competitionName,
@@ -1095,17 +875,15 @@ class MobileApi {
 
   Future<void> stopViewer({
     required String backendUrl,
-    required String tenantId,
     required DeviceIdentity identity,
     required String streamId,
     required TenantBranding branding,
   }) async {
     final response = await http.post(
       ApiConfig.uri(backendUrl, '/viewer/stop'),
-      headers: _mobileHeaders(branding, tenantId, identity.deviceId),
+      headers: _mobileHeaders(branding, identity.deviceId),
       body: jsonEncode({
         'device_id': identity.deviceId,
-        'tenant_id': tenantId,
         'server_id': branding.serverId,
         'stream_id': streamId,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
@@ -1134,14 +912,13 @@ class MobileApi {
     return 'device-$left-$right';
   }
 
-  Map<String, String> _mobileHeaders(TenantBranding branding, String tenantId, String deviceId) {
+  Map<String, String> _mobileHeaders(TenantBranding branding, String deviceId) {
     final resolvedToken = branding.mobileApiToken.trim().isNotEmpty
         ? branding.mobileApiToken.trim()
         : activeApiToken.trim();
     return {
       'Content-Type': 'application/json',
       'X-Api-Token': resolvedToken,
-      'X-Tenant-Id': tenantId,
       'X-Device-Id': deviceId,
       'X-Server-Id': branding.serverId,
     };
@@ -1160,8 +937,6 @@ class AppBootstrapPage extends StatefulWidget {
 }
 
 class _AppBootstrapPageState extends State<AppBootstrapPage> {
-  String get _masterWebBackendUrl => NetworkConfig.baseUrl;
-
   final MobileApi _api = const MobileApi();
   late Future<AppSession> _sessionFuture;
   bool _showBackendSettings = false;
@@ -1184,10 +959,7 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
     if (resolved.trim().isNotEmpty) {
       return ApiConfig.normalize(resolved);
     }
-    if (kIsWeb) {
-      return ApiConfig.normalize(_masterWebBackendUrl);
-    }
-    return ApiConfig.normalize(NetworkConfig.baseUrl);
+    throw Exception('API_BASE_URL is not configured for this build.');
   }
 
   @override
@@ -1199,22 +971,13 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
   Future<AppSession> _loadSession() async {
     final initialBackendUrl = ApiConfig.normalize(await resolveBackendUrl());
     await _api.checkServer(initialBackendUrl);
-    final resolvedTenantId = await _api.ensureTenantId();
-    final canShowBackendSettings = kIsWeb && resolvedTenantId == 'master';
-    if (mounted) {
-      setState(() => _showBackendSettings = canShowBackendSettings);
-    } else {
-      _showBackendSettings = canShowBackendSettings;
-    }
-    final initialBranding = await _api.fetchBranding(initialBackendUrl, resolvedTenantId);
+    _showBackendSettings = false;
+    final initialBranding = await _api.fetchBranding(initialBackendUrl);
     final resolvedBackendUrl = initialBackendUrl;
     backendUrl = resolvedBackendUrl;
     activeBackendUrl = resolvedBackendUrl;
-    tenantId = resolvedTenantId;
-    await _saveBootstrapTenantId(resolvedTenantId);
-    final runtimeManifest = await _api.fetchRuntimeManifest(resolvedBackendUrl, resolvedTenantId);
+    final runtimeManifest = await _api.fetchRuntimeManifest(resolvedBackendUrl);
     final branding = TenantBranding(
-      tenantId: initialBranding.tenantId,
       appName: initialBranding.appName,
       logoUrl: initialBranding.logoUrl,
       primaryColor: initialBranding.primaryColor,
@@ -1237,15 +1000,14 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
     if (!runtimeManifest.isSupported) {
       throw Exception('This mobile build is no longer supported. Install the latest app package from the master portal.');
     }
-    await _api.registerDevice(resolvedBackendUrl, resolvedTenantId, identity, security, branding);
-    final status = await _api.fetchStatus(resolvedBackendUrl, resolvedTenantId, identity.deviceId, security, branding);
-    final catalog = status.isAllowed ? await _api.fetchCatalog(resolvedBackendUrl, resolvedTenantId, identity.deviceId, branding) : <NationCatalog>[];
+    await _api.registerDevice(resolvedBackendUrl, identity, security, branding);
+    final status = await _api.fetchStatus(resolvedBackendUrl, identity.deviceId, security, branding);
+    final catalog = status.isAllowed ? await _api.fetchCatalog(resolvedBackendUrl, identity.deviceId, branding) : <NationCatalog>[];
     final liveScores = runtimeManifest.featureFlags.liveScores ? await _api.fetchLiveScores(resolvedBackendUrl) : const <LiveScoreEntry>[];
     final fixtures = runtimeManifest.featureFlags.schedules ? await _api.fetchFixtures(resolvedBackendUrl) : const <FixtureEntry>[];
     final standings = runtimeManifest.featureFlags.standings ? await _api.fetchStandings(resolvedBackendUrl) : const <StandingEntry>[];
     return AppSession(
       backendUrl: resolvedBackendUrl,
-      tenantId: resolvedTenantId,
       branding: branding,
       identity: identity,
       security: security,
@@ -1335,15 +1097,14 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Chrome master mode uses the master backend by default. '
-              'Set a manual override here if you need to point the web client elsewhere.',
+              'Override the backend URL for this device if you need to point the app at a different server.',
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               decoration: const InputDecoration(
                 labelText: 'Backend URL',
-                hintText: 'http://127.0.0.1:8000',
+                hintText: 'https://api.example.com',
               ),
               autofocus: true,
               keyboardType: TextInputType.url,
@@ -1356,8 +1117,8 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop('__USE_MASTER__'),
-            child: const Text('Use Master'),
+            onPressed: () => Navigator.of(context).pop(''),
+            child: const Text('Use Default'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
@@ -1368,9 +1129,9 @@ class _AppBootstrapPageState extends State<AppBootstrapPage> {
     );
 
     if (!mounted || result == null) return;
-    if (result == '__USE_MASTER__' || result.isEmpty) {
+    if (result.isEmpty) {
       await clearManualBackendUrl();
-      backendUrl = ApiConfig.normalize(activeBackendUrl.isNotEmpty ? activeBackendUrl : _masterWebBackendUrl);
+      backendUrl = ApiConfig.normalize(activeBackendUrl);
     } else {
       await setManualBackendUrl(result);
       backendUrl = ApiConfig.normalize(result);
@@ -1582,7 +1343,6 @@ class MatchListPage extends StatelessWidget {
                   MaterialPageRoute<void>(
                     builder: (_) => PlayerPage(
                       backendUrl: session.backendUrl,
-                      tenantId: session.tenantId,
                       branding: session.branding,
                       identity: session.identity,
                       security: session.security,
@@ -2455,7 +2215,6 @@ class PlayerPage extends StatefulWidget {
   const PlayerPage({
     super.key,
     required this.backendUrl,
-    required this.tenantId,
     required this.branding,
     required this.identity,
     required this.security,
@@ -2465,7 +2224,6 @@ class PlayerPage extends StatefulWidget {
   });
 
   final String backendUrl;
-  final String tenantId;
   final TenantBranding branding;
   final DeviceIdentity identity;
   final SecuritySnapshot security;
@@ -2501,7 +2259,6 @@ class _PlayerPageState extends State<PlayerPage> {
       _watermarkTimer = Timer.periodic(const Duration(seconds: 30), (_) => _shuffleWatermark());
       final playbackUrl = await _api.fetchStreamTokenUrl(
         backendUrl: widget.backendUrl,
-        tenantId: widget.tenantId,
         deviceId: widget.identity.deviceId,
         streamId: widget.match.streamId,
         security: widget.security,
@@ -2571,7 +2328,6 @@ class _PlayerPageState extends State<PlayerPage> {
     try {
       await _api.startViewer(
         backendUrl: widget.backendUrl,
-        tenantId: widget.tenantId,
         identity: widget.identity,
         match: widget.match,
         branding: widget.branding,
@@ -2585,7 +2341,6 @@ class _PlayerPageState extends State<PlayerPage> {
     try {
       await _api.stopViewer(
         backendUrl: widget.backendUrl,
-        tenantId: widget.tenantId,
         identity: widget.identity,
         streamId: widget.match.streamId,
         branding: widget.branding,

@@ -3,14 +3,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.auth import require_mobile_context
+from app.auth import SINGLE_TENANT_ID, require_mobile_context
 from app.storage import get_device_status, register_device
 
 router = APIRouter()
 
 
 class DeviceRegisterPayload(BaseModel):
-    tenant_id: Optional[str] = "default"
+    tenant_id: Optional[str] = SINGLE_TENANT_ID
     device_id: str
     device_name: str
     platform: str
@@ -38,7 +38,7 @@ def device_register(payload: DeviceRegisterPayload, request: Request, _: None = 
             device_name=payload.device_name,
             platform=payload.platform,
             app_version=payload.app_version,
-            tenant_id=context.get("tenant_id") or payload.tenant_id or "default",
+            tenant_id=context.get("tenant_id") or SINGLE_TENANT_ID,
             device_fingerprint=payload.device_fingerprint or "",
             ip_address=_client_ip(request),
             country=payload.country or "",
@@ -54,7 +54,7 @@ def device_register(payload: DeviceRegisterPayload, request: Request, _: None = 
 @router.get("/status")
 def device_status(
     request: Request,
-    tenant_id: str = Query("default"),
+    tenant_id: str = Query(SINGLE_TENANT_ID),
     device_id: str = Query(...),
     touch: Optional[bool] = True,
     country: Optional[str] = None,
@@ -70,7 +70,7 @@ def device_status(
             "item": get_device_status(
                 device_id=device_id,
                 touch=bool(touch),
-                tenant_id=context.get("tenant_id") or tenant_id,
+                tenant_id=context.get("tenant_id") or SINGLE_TENANT_ID,
                 ip_address=_client_ip(request),
                 country=country or "",
                 device_fingerprint=device_fingerprint or "",

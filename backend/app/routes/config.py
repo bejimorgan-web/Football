@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.auth import SINGLE_TENANT_ID
 from app.api_config import get_api_base_url
 from app.server_config import load_server_config
 from app.storage import get_branding_config
@@ -47,6 +48,6 @@ def server_config():
 @router.get("/branding")
 def branding_config(tenant_id: Optional[str] = Query(None)):
     try:
-        return _public_branding_payload(get_branding_config(tenant_id))
+        return _public_branding_payload(get_branding_config(SINGLE_TENANT_ID))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

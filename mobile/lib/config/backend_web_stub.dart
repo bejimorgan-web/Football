@@ -1,16 +1,20 @@
 import 'dart:html' as html;
 
 import 'api_config.dart';
+import 'network_config.dart';
 
 const String _manualBackendUrlStorageKey = 'manual_backend_url';
-String get _webAutoBackendUrl => ApiConfig.baseUrl;
 
 Future<String> resolveBackendUrl() async {
   final manualOverride = html.window.localStorage[_manualBackendUrlStorageKey]?.trim();
   if (manualOverride != null && manualOverride.isNotEmpty) {
     return ApiConfig.normalize(manualOverride);
   }
-  return ApiConfig.normalize(_webAutoBackendUrl);
+  final configured = NetworkConfig.baseUrl;
+  if (configured.isNotEmpty) {
+    return ApiConfig.normalize(configured);
+  }
+  return ApiConfig.normalize(html.window.location.origin ?? '');
 }
 
 Future<String?> getManualBackendUrl() async {

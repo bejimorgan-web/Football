@@ -17,34 +17,17 @@ from app.api_config import (
     get_runtime_public_api_url,
     save_api_config,
 )
-from app.auth import require_role
+from app.auth import SINGLE_TENANT_ID, require_admin_context
 from app.backup import ensure_backup_storage, start_backup_scheduler, stop_backup_scheduler
 from app.branding_engine import BRANDING_CDN_ROOT, BRANDING_STORAGE_ROOT, ensure_branding_storage
 from app.logo_utils import STATIC_ROOT, ensure_static_logo_storage
 from app.notifications import start_notification_scheduler, stop_notification_scheduler
-from app.mobile_builder import (
-    ensure_mobile_builder_storage,
-    mobile_build_worker_enabled,
-    start_mobile_build_worker,
-    stop_mobile_build_worker,
-)
 from app.env_loader import load_backend_env
-from app.routes.admin_accounts import router as admin_accounts_router
-from app.routes.admin_auth import router as admin_auth_router
-from app.routes.admin import router as admin_router
-from app.routes.analytics import router as analytics_router
 from app.routes.auth_login import router as auth_login_router
 from app.routes.config import router as config_router
 from app.routes.device import router as device_router
-from app.routes.football import router as football_router
-from app.routes.football_data import router as football_data_router
-from app.routes.license import router as license_router
-from app.routes.mobile_builder import router as mobile_builder_router
 from app.routes.playback import router as playback_router
-from app.routes.provider import router as provider_router
 from app.routes.streams import router as streams_router
-from app.routes.tenant import router as tenant_router
-from app.routes.updates import router as updates_router
 from app.routes.version import router as version_router
 from app.routes.viewer import router as viewer_router
 from app.settings import is_development_mode, load_backup_settings_from_env, load_email_settings_from_env, load_settings_from_env, validate_settings
@@ -59,8 +42,6 @@ AUDIT_EXCLUDED_PREFIXES = (
     "/analytics/",
     "/admin/security",
 )
-MOBILE_BUILD_WORKER_ACTIVE = False
-
 
 def _cors_allowed_origins() -> list[str]:
     raw = str(os.getenv("CORS_ALLOW_ORIGINS") or "").strip()
@@ -87,7 +68,6 @@ DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 ensure_storage_files()
 ensure_backup_storage()
 ensure_update_storage()
-ensure_mobile_builder_storage()
 ensure_branding_storage()
 ensure_api_config_storage()
 ensure_static_logo_storage()
@@ -95,6 +75,7 @@ ensure_static_logo_storage()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allowed_origins(),
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Api-Token", "X-Tenant-Id", "X-Device-Id", "X-Server-Id"],
     expose_headers=["Content-Type"],
@@ -112,20 +93,9 @@ def _should_audit_request(request: Request) -> bool:
 app.include_router(streams_router, prefix="/streams", tags=["streams"])
 app.include_router(config_router, prefix="/config", tags=["config"])
 app.include_router(auth_login_router)
-app.include_router(admin_accounts_router, prefix="/admin", tags=["admin-accounts"])
-app.include_router(admin_auth_router, prefix="/admin/auth", tags=["admin-auth"])
-app.include_router(admin_router, prefix="/admin", tags=["admin"])
-app.include_router(provider_router)
-app.include_router(tenant_router, prefix="/tenant", tags=["tenant"])
 app.include_router(device_router, prefix="/device", tags=["device"])
-app.include_router(license_router, prefix="/license", tags=["license"])
 app.include_router(viewer_router, prefix="/viewer", tags=["viewer"])
-app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
-app.include_router(football_router)
-app.include_router(football_data_router)
 app.include_router(playback_router, tags=["playback"])
-app.include_router(updates_router, prefix="/updates", tags=["updates"])
-app.include_router(mobile_builder_router, prefix="/mobile", tags=["mobile-builder"])
 app.include_router(version_router, tags=["version"])
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.mount("/static", StaticFiles(directory=STATIC_ROOT), name="static")
@@ -195,7 +165,6 @@ async def audit_request(request: Request, call_next):
 
 @app.on_event("startup")
 def load_env_config() -> None:
-    global MOBILE_BUILD_WORKER_ACTIVE
     settings = load_settings_from_env()
     backup_settings = load_backup_settings_from_env()
     email_settings = load_email_settings_from_env()
@@ -211,20 +180,12 @@ def load_env_config() -> None:
 
     start_backup_scheduler(backup_settings)
     start_notification_scheduler(email_settings)
-    MOBILE_BUILD_WORKER_ACTIVE = mobile_build_worker_enabled()
-    if MOBILE_BUILD_WORKER_ACTIVE:
-        logger.info("Starting embedded mobile build worker in API process.")
-        start_mobile_build_worker()
-    else:
-        logger.info("Embedded mobile build worker disabled for this API process.")
 
 
 @app.on_event("shutdown")
 def shutdown_background_services() -> None:
     stop_backup_scheduler()
     stop_notification_scheduler()
-    if MOBILE_BUILD_WORKER_ACTIVE:
-        stop_mobile_build_worker()
     flush_audit_logs(force=True)
 
 
@@ -258,9 +219,7 @@ def api_config(request: Request):
     configured_backend_api_url = str(backend_api.get("url") or get_runtime_backend_api_url()).strip()
     configured_public_api_url = str(public_api.get("url") or payload.get("apiBaseUrl") or get_runtime_public_api_url()).strip()
     request_public_api_url = str(request.base_url).rstrip("/")
-    if is_development_mode():
-        public_api_url = "http://localhost:8000"
-    elif not configured_public_api_url or "127.0.0.1" in configured_public_api_url or "localhost" in configured_public_api_url:
+    if not configured_public_api_url or "127.0.0.1" in configured_public_api_url or "localhost" in configured_public_api_url:
         public_api_url = request_public_api_url or configured_public_api_url
     else:
         public_api_url = configured_public_api_url
@@ -269,7 +228,7 @@ def api_config(request: Request):
         "backend_url": public_api_url,
         "backendApiUrl": backend_api_url,
         "backend_api_url": backend_api_url,
-        "tenant_id": "master",
+        "tenant_id": SINGLE_TENANT_ID,
         "auth_required": False,
         "apiBaseUrl": public_api_url,
         "publicApiUrl": public_api_url,
@@ -301,7 +260,7 @@ def api_config(request: Request):
 
 
 @app.post("/api/config")
-def save_public_api_config(payload: PublicApiConfigPayload, _: dict = Depends(require_role("master"))):
+def save_public_api_config(payload: PublicApiConfigPayload, _: None = Depends(require_admin_context)):
     save_api_config(
         payload.apiBaseUrl,
         backend_api=payload.backendApi.model_dump() if payload.backendApi else None,

@@ -2050,5 +2050,17 @@
     "cloud_location": null,
     "removed_backups": [],
     "error": "APScheduler is not installed. Automatic backups are disabled."
+  },
+  {
+    "id": "eab98b832b3e407f9b0e5b0671a8b09c",
+    "started_at": "2026-03-31T07:23:19.517122+00:00",
+    "finished_at": "2026-03-31T07:23:19.517132+00:00",
+    "success": false,
+    "archive_path": null,
+    "cloud_enabled": false,
+    "cloud_uploaded": false,
+    "cloud_location": null,
+    "removed_backups": [],
+    "error": "APScheduler is not installed. Automatic backups are disabled."
   }
 ]

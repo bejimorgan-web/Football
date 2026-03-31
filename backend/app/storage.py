@@ -513,14 +513,31 @@ def authenticate_tenant_admin(tenant_id: str, username: str, password: str) -> D
         str(tenant.get("tenant_id") or ""),
     )
     credentials = tenant.get("admin_credentials") or {}
-    if not credentials.get("username") or not credentials.get("password"):
-        raise ValueError("Tenant admin credentials are not configured.")
-    if not (
-        secrets.compare_digest(str(credentials.get("username")), str(username or ""))
-        and secrets.compare_digest(str(credentials.get("password")), str(password or ""))
-    ):
-        raise ValueError("Invalid tenant admin credentials.")
-    return tenant
+    configured_username = str(credentials.get("username") or "").strip()
+    configured_password = str(credentials.get("password") or "")
+    requested_username = str(username or "").strip()
+    requested_password = str(password or "")
+
+    if configured_username and configured_password:
+        if not (
+            secrets.compare_digest(configured_username, requested_username)
+            and secrets.compare_digest(configured_password, requested_password)
+        ):
+            raise ValueError("Invalid tenant admin credentials.")
+        return tenant
+
+    admin = get_admin_by_tenant_id(str(tenant.get("tenant_id") or ""))
+    if admin is not None:
+        expected = _hash_secret(requested_password, str(admin.get("password_salt") or ""))
+        if secrets.compare_digest(str(admin.get("email") or "").strip().lower(), _normalize_email(requested_username)) and secrets.compare_digest(expected, str(admin.get("password_hash") or "")):
+            logger.info(
+                "Tenant admin login used linked admin credentials tenant_id=%s admin_id=%s",
+                str(tenant.get("tenant_id") or ""),
+                str(admin.get("admin_id") or ""),
+            )
+            return tenant
+
+    raise ValueError("Tenant admin credentials are not configured.")
 
 
 def get_branding_config(tenant_id: Optional[str] = None) -> Dict[str, object]:
@@ -1589,6 +1606,8 @@ def register_admin(
         email=normalized_email,
         subscription_plan=normalized_plan_id,
         status="active",
+        admin_username="" if assigned_role == "master" else normalized_email,
+        admin_password="" if assigned_role == "master" else password,
     )
     now = utc_now()
     salt = secrets.token_hex(16)

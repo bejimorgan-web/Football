@@ -1,15 +1,15 @@
 {
   "version": "0.1.0",
-  "release_date": "2026-03-27",
-  "release_notes": "Initial desktop release.",
+  "release_date": "2026-03-23",
+  "release_notes": "Initial white-label desktop release.",
   "mandatory": false,
-  "minimum_supported_version": "0.0.0",
+  "minimum_supported_version": "0.1.0",
   "download_url": "",
   "download_name": "",
   "download_size": 0,
   "sha512": "",
   "platform": "",
   "files": {},
-  "published_at": "2026-03-27T10:02:26.324922+00:00",
+  "published_at": "2026-03-23T15:27:23.456707+00:00",
   "available_platforms": []
 }

@@ -45,7 +45,7 @@ class SecurityService {
   static Future<SecuritySnapshot> getSecuritySnapshot() async {
     if (kIsWeb) {
       return SecuritySnapshot(
-        deviceFingerprint: 'web-master-client',
+        deviceFingerprint: 'web-client',
         secureDevice: true,
         vpnActive: false,
         appSignatureValid: true,

@@ -25,6 +25,9 @@ Future<String> resolveBackendUrl() async {
   final seedBackendUrl = ApiConfig.normalize(
     embeddedTenantBackendUrl.trim().isNotEmpty ? embeddedTenantBackendUrl : NetworkConfig.baseUrl,
   );
+  if (seedBackendUrl.isEmpty) {
+    return '';
+  }
   final resolvedFromConfig = await _resolveBackendUrlFromConfig(prefs, seedBackendUrl);
   if (resolvedFromConfig != null && resolvedFromConfig.isNotEmpty) {
     return resolvedFromConfig;

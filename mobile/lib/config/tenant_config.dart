@@ -1,15 +1,10 @@
 import 'api_config.dart';
 import 'network_config.dart';
 
-const String discoveryServer = 'https://discovery.yourdomain.com';
-
-// Replace this during client APK generation to pin a tenant at build time.
-const String embeddedTenantId = 'default';
+const String singleTenantId = 'default';
 String get embeddedTenantBackendUrl => NetworkConfig.baseUrl;
-const String embeddedTenantApiToken = '';
 
 String backendUrl = '';
-String tenantId = '';
 String backendApiUrl = '';
 String backendApiToken = '';
 String publicApiUrl = '';
