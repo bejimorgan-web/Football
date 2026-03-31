@@ -72,3 +72,20 @@ def test_mobile_config_always_returns_resolved_url(monkeypatch, tmp_path):
     assert tenant_payload["backend_url_source"] == "default_api_base"
     assert runtime_payload["server_url"] == DEFAULT_API_URL
     assert runtime_payload["api_url"] == DEFAULT_API_URL
+
+
+def test_placeholder_api_base_url_falls_back_to_runtime_server(monkeypatch, tmp_path):
+    _configure_temp_storage(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        api_config,
+        "load_server_config",
+        lambda: {
+            "public_url": "https://footballbackend-kdv3.onrender.com",
+            "local_url": "https://footballbackend-kdv3.onrender.com",
+        },
+    )
+
+    payload = api_config.save_api_config("https://example.com")
+
+    assert payload["apiBaseUrl"] == "https://footballbackend-kdv3.onrender.com"
+    assert payload["public_api"]["url"] == "https://footballbackend-kdv3.onrender.com"

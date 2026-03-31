@@ -9,10 +9,25 @@ from app.config import DEFAULT_API_URL
 from app.server_config import load_server_config
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 API_CONFIG_PATH = DATA_DIR / "api_config.json"
+_PLACEHOLDER_API_HOSTS = {
+    "example.com",
+    "www.example.com",
+}
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _is_placeholder_api_base_url(value: str) -> bool:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return False
+    try:
+        host = normalized.split("://", 1)[-1].split("/", 1)[0].strip().lower()
+    except Exception:
+        return False
+    return host in _PLACEHOLDER_API_HOSTS
 
 
 def normalize_api_base_url(value: str) -> str:
@@ -21,6 +36,8 @@ def normalize_api_base_url(value: str) -> str:
         normalized = normalized.replace("https//", "https://", 1)
     elif normalized.startswith("http//"):
         normalized = normalized.replace("http//", "http://", 1)
+    if _is_placeholder_api_base_url(normalized):
+        normalized = ""
     return normalized or load_server_config()["local_url"] or DEFAULT_API_URL
 
 

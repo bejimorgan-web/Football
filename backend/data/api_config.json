@@ -1,12 +1,12 @@
 {
-  "apiBaseUrl": "https://example.com",
+  "apiBaseUrl": "https://footballbackend-kdv3.onrender.com",
   "backend_api": {
-    "url": "https://example.com",
+    "url": "https://footballbackend-kdv3.onrender.com",
     "api_token": "",
     "connected": false
   },
   "public_api": {
-    "url": "https://example.com",
+    "url": "https://footballbackend-kdv3.onrender.com",
     "api_token": "",
     "connected": false
   },
