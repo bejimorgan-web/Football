@@ -648,13 +648,38 @@ function firstLogoValue(...values) {
   return "";
 }
 
+function findCatalogNation(nationId) {
+  const normalizedNationId = String(nationId || "").trim();
+  if (!normalizedNationId) return null;
+  return state.nations.find((item) => String(item.id || "") === normalizedNationId) || null;
+}
+
+function findCatalogCompetition(competitionId) {
+  const normalizedCompetitionId = String(competitionId || "").trim();
+  if (!normalizedCompetitionId) return null;
+  return state.competitions.find((item) => String(item.id || "") === normalizedCompetitionId) || null;
+}
+
+function findCatalogClub(clubId) {
+  const normalizedClubId = String(clubId || "").trim();
+  if (!normalizedClubId) return null;
+  return state.clubs.find((item) => String(item.id || "") === normalizedClubId) || null;
+}
+
 function approvedMatchLogoMarkup(match) {
-  const homeLogoUrl = firstLogoValue(match.home_club_logo, match.home_team_logo, match.home_logo, match.stream_logo);
-  const awayLogoUrl = firstLogoValue(match.away_club_logo, match.away_team_logo, match.away_logo, match.stream_logo);
-  const competitionLogoUrl = firstLogoValue(match.competition_logo, match.logo, match.nation_logo, match.stream_logo);
-  const homeLogo = logoMarkup(homeLogoUrl, match.home_club_name || match.home_team_name || "Home");
-  const awayLogo = logoMarkup(awayLogoUrl, match.away_club_name || match.away_team_name || "Away");
-  const competitionLogo = `<div class="approved-competition-logo" title="${html(match.competition_name || "Competition")}">${logoMarkup(competitionLogoUrl, match.competition_name || "Competition")}</div>`;
+  const homeClub = findCatalogClub(match.home_club_id);
+  const awayClub = findCatalogClub(match.away_club_id);
+  const competition = findCatalogCompetition(match.competition_id);
+  const nation = findCatalogNation(match.nation_id);
+  const homeLogoUrl = firstLogoValue(homeClub?.logo_url, match.home_club_logo, match.home_team_logo, match.home_logo, match.stream_logo);
+  const awayLogoUrl = firstLogoValue(awayClub?.logo_url, match.away_club_logo, match.away_team_logo, match.away_logo, match.stream_logo);
+  const competitionLogoUrl = firstLogoValue(competition?.logo_url, match.competition_logo, match.logo, nation?.logo_url, match.nation_logo, match.stream_logo);
+  const homeLabel = homeClub?.name || match.home_club_name || match.home_club || match.home_team_name || "Home";
+  const awayLabel = awayClub?.name || match.away_club_name || match.away_club || match.away_team_name || "Away";
+  const competitionLabel = competition?.name || match.competition_name || "Competition";
+  const homeLogo = logoMarkup(homeLogoUrl, homeLabel);
+  const awayLogo = logoMarkup(awayLogoUrl, awayLabel);
+  const competitionLogo = `<div class="approved-competition-logo" title="${html(competitionLabel)}">${logoMarkup(competitionLogoUrl, competitionLabel)}</div>`;
   return `<div class="approved-match-logos">${homeLogo}<span class="approved-logo-separator">vs</span>${awayLogo}${competitionLogo}</div>`;
 }
 
