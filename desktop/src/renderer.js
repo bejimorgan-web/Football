@@ -1124,10 +1124,49 @@ function getCompetitionOptions() {
   return state.competitions.filter((item) => item.nation_id === (el.approveNationSelect.value || state.nations[0]?.id || ""));
 }
 
-function getClubOptions() {
-  const competitionId = el.approveCompetitionSelect.value || "";
-  if (!competitionId) return [];
-  return getVisibleClubsForCompetition(competitionId);
+function getClubOptions(competitionId = "") {
+  const resolvedCompetitionId = String(competitionId || el.approveCompetitionSelect.value || "").trim();
+  if (!resolvedCompetitionId) return [];
+  return getVisibleClubsForCompetition(resolvedCompetitionId);
+}
+
+function selectApprovalCompetition(competitions, preferredCompetitionId = "") {
+  const preferredId = String(preferredCompetitionId || "").trim();
+  if (preferredId && competitions.some((item) => String(item.id || "") === preferredId)) {
+    return preferredId;
+  }
+  return String(competitions[0]?.id || "").trim();
+}
+
+function selectApprovalClub(clubs, preferredClubId = "", excludedClubId = "") {
+  const preferredId = String(preferredClubId || "").trim();
+  const excludedId = String(excludedClubId || "").trim();
+  if (preferredId && clubs.some((item) => String(item.id || "") === preferredId)) {
+    return preferredId;
+  }
+  return String(clubs.find((item) => String(item.id || "") !== excludedId)?.id || clubs[0]?.id || "").trim();
+}
+
+function syncApproveSelections(existingMatch = null) {
+  const competitions = getCompetitionOptions();
+  const selectedCompetitionId = selectApprovalCompetition(
+    competitions,
+    existingMatch?.competition_id || el.approveCompetitionSelect.value || "",
+  );
+  el.approveCompetitionSelect.innerHTML = optionMarkup(competitions, selectedCompetitionId, true);
+  const clubs = getClubOptions(selectedCompetitionId);
+  const selectedHomeClubId = selectApprovalClub(
+    clubs,
+    existingMatch?.home_club_id || el.approveHomeClubSelect.value || "",
+  );
+  const selectedAwayClubId = selectApprovalClub(
+    clubs,
+    existingMatch?.away_club_id || el.approveAwayClubSelect.value || "",
+    selectedHomeClubId,
+  );
+  el.approveHomeClubSelect.innerHTML = optionMarkup(clubs, selectedHomeClubId, true);
+  el.approveAwayClubSelect.innerHTML = optionMarkup(clubs, selectedAwayClubId, true);
+  updateApprovalPreview();
 }
 
 function selectChannel(channel) {
@@ -1213,15 +1252,6 @@ function updateApprovalPreview() {
   paintLogo(el.approveCompetitionLogoPreview, competition?.logo_url || "", competition?.name || "competition");
   paintLogo(el.approveHomeClubLogoPreview, homeClub?.logo_url || "", homeClub?.name || "home");
   paintLogo(el.approveAwayClubLogoPreview, awayClub?.logo_url || "", awayClub?.name || "away");
-}
-
-function syncApproveSelections(existingMatch = null) {
-  const competitions = getCompetitionOptions();
-  el.approveCompetitionSelect.innerHTML = optionMarkup(competitions, existingMatch?.competition_id || competitions[0]?.id || "");
-  const clubs = getClubOptions();
-  el.approveHomeClubSelect.innerHTML = optionMarkup(clubs, existingMatch?.home_club_id || clubs[0]?.id || "");
-  el.approveAwayClubSelect.innerHTML = optionMarkup(clubs, existingMatch?.away_club_id || clubs[1]?.id || clubs[0]?.id || "");
-  updateApprovalPreview();
 }
 
 function renderApprovalPanel() {
