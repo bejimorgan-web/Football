@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 from urllib.parse import quote
 from uuid import uuid4
 
+from app.app_storage import ensure_app_storage_loaded, persist_app_storage_for_path
 from app.api_config import get_api_base_url
 from app.logo_utils import normalize_logo_url
 from app.settings import IPTVSettings
@@ -103,6 +104,7 @@ def _ensure_data_dir() -> None:
 
 def ensure_storage_files() -> None:
     _ensure_data_dir()
+    ensure_app_storage_loaded(data_dir=DATA_DIR, logger=logger)
     ensure_tenant_storage()
     ensure_admin_storage()
     migrate_master_tenant_identity()
@@ -2199,6 +2201,7 @@ def _read_json(path: Path, fallback):
 def _write_json(path: Path, payload) -> None:
     _ensure_data_dir()
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    persist_app_storage_for_path(path, data_dir=DATA_DIR, logger=logger)
 
 
 def save_config(settings: IPTVSettings) -> None:
